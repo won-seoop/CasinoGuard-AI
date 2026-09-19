@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# 대용량 Dataset/모델/결과 영상은 Git에 직접 커밋하지 않음 (지침 33번)
+data/raw/
+data/test/*.mp4
+data/test/*.ogg
+data/test/*.webm
+results/videos/
+results/EXP-001/*.mp4
+*.pt
+*.onnx
+
+# Notion/실행 산출물 중 코드가 아닌 것
+.ultralytics/

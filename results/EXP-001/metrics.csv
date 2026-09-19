@@ -1,0 +1,7 @@
+case,path,opened_ok,source_fps,resolution,frames_read,frames_failed,processed_fps,avg_read_time_ms,p50_latency_ms,p95_latency_ms,total_time_sec,error
+normal_480p_11s,/Users/wonhyeonseob/dev/cctv/data/raw/pedestrian_crossing_480p.ogg,True,30.0,640x480,345,0,3011.84,0.329,0.277,0.573,0.115,
+crowded_1080p_56s,/Users/wonhyeonseob/dev/cctv/data/raw/crowded_intersection_1080p.webm,True,23.98,1920x1080,1356,0,474.55,1.995,1.702,3.477,2.857,
+short_3s_480p,/Users/wonhyeonseob/dev/cctv/data/test/short_3s_480p.mp4,True,30.0,640x480,90,0,1107.91,0.827,0.352,4.123,0.081,
+no_person_5s,/Users/wonhyeonseob/dev/cctv/data/test/no_person_synthetic.mp4,True,30.0,640x480,150,0,2389.76,0.396,0.176,0.844,0.063,
+corrupted_truncated,/Users/wonhyeonseob/dev/cctv/data/test/corrupted_truncated.mp4,False,0.0,0x0,0,0,0.0,0.0,0.0,0.0,0.0,OPEN_FAILED: cv2.VideoCapture가 파일을 열지 못함
+normal_480p_resized_640,/Users/wonhyeonseob/dev/cctv/data/raw/pedestrian_crossing_480p.ogg,True,30.0,640x480,345,0,2075.23,0.38,0.337,0.711,0.166,
