@@ -15,3 +15,7 @@ results/EXP-001/*.mp4
 
 # Notion/실행 산출물 중 코드가 아닌 것
 .ultralytics/
+
+# Metadata pipeline DB / 대량 crop 이미지만 제외 (벤치마크 CSV, 대표 이미지 일부는 유지)
+results/metadata_pipeline/metadata.db
+results/metadata_pipeline/bestshot/
