@@ -1,0 +1,4 @@
+frame_idx,track_id,direction
+100,3,B_TO_A
+164,1,B_TO_A
+172,1,A_TO_B
