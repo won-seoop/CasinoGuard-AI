@@ -53,11 +53,17 @@ class ROIStateMachine:
             return ROIEvent(track_id=track_id, event_type="ENTER", frame_idx=frame_idx)
         return ROIEvent(track_id=track_id, event_type="EXIT", frame_idx=frame_idx)
 
-    def forget_track(self, track_id: int) -> None:
+    def forget_track(self, track_id: int, frame_idx: int | None = None) -> ROIEvent | None:
         """더 이상 보이지 않는 Track의 상태를 정리한다.
         (지침 28: 장시간 실행 시 상태가 무한정 쌓이는 Memory 문제 예방)
+
+        FC-004 개선: INSIDE 상태였던 Track이 사라지면 EXIT 이벤트를 강제로 발생시킨다.
+        (EXP-005에서 ENTER(16) > EXIT(7) 비대칭이 발생한 원인을 여기서 수정)
         """
-        self.states.pop(track_id, None)
+        old_state = self.states.pop(track_id, None)
+        if old_state == "INSIDE" and frame_idx is not None:
+            return ROIEvent(track_id=track_id, event_type="EXIT", frame_idx=frame_idx)
+        return None
 
     def active_track_count(self) -> int:
         return len(self.states)

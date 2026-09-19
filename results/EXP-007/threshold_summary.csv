@@ -1,0 +1,5 @@
+threshold_sec,threshold_frames,loitering_events
+5,120,6
+10,240,1
+20,480,0
+30,719,0

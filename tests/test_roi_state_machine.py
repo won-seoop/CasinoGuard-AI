@@ -62,11 +62,28 @@ def test_tracks_are_independent():
 def test_forget_track_resets_state_to_outside():
     sm = ROIStateMachine(polygon=SQUARE)
     sm.update(track_id=1, bbox=(40, 40, 60, 60), frame_idx=0)  # INSIDE
-    sm.forget_track(1)
+    sm.forget_track(1, frame_idx=5)
     assert sm.active_track_count() == 0
     # 다시 나타나면 OUTSIDE부터 시작 -> 안으로 들어오면 다시 ENTER
     ev = sm.update(track_id=1, bbox=(40, 40, 60, 60), frame_idx=10)
     assert ev.event_type == "ENTER"
+
+
+def test_forget_track_emits_exit_when_was_inside():
+    """FC-004: INSIDE 상태에서 Track이 사라지면 EXIT 이벤트를 강제로 내야 한다."""
+    sm = ROIStateMachine(polygon=SQUARE)
+    sm.update(track_id=1, bbox=(40, 40, 60, 60), frame_idx=0)  # INSIDE
+    ev = sm.forget_track(1, frame_idx=7)
+    assert ev is not None
+    assert ev.event_type == "EXIT"
+    assert ev.frame_idx == 7
+
+
+def test_forget_track_emits_nothing_when_was_outside():
+    sm = ROIStateMachine(polygon=SQUARE)
+    sm.update(track_id=1, bbox=(200, 200, 210, 220), frame_idx=0)  # OUTSIDE
+    ev = sm.forget_track(1, frame_idx=7)
+    assert ev is None
 
 
 def test_boundary_flicker_does_not_duplicate_when_state_unchanged():
