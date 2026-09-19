@@ -121,6 +121,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 
 - **PAR-001**: Confidence-only BestShot → Composite Score로 개선 (정성적 검증)
 - **PAR-002**: Intrusion EXIT 이벤트 유실 → forget_track() 수정 (Unit Test로 검증)
+- **PAR-003**: "ONNX/INT8이 항상 빠르다"는 통념이 M3에서는 성립하지 않음을 실측으로 확인 (PyTorch FP32 25.1 FPS > ONNX INT8 22.0 FPS > ONNX FP32 19.2 FPS)
 
 ## 16. Long Running Test
 
@@ -128,7 +129,15 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 
 ## 17. Edge 환경 고려
 
-MacBook Air M3(CPU/MPS)에서 CUDA/TensorRT 없이 YOLO11n Pretrained로 실시간 처리를 달성했다. ONNX/INT8 변환, C++ 포팅(Video Frame Reader, ROI 계산, Line Crossing, Event State Machine 등)은 Stretch Goal로 남아 있다.
+MacBook Air M3(CPU/MPS)에서 CUDA/TensorRT 없이 YOLO11n Pretrained로 실시간 처리를 달성했다(EXP-008 참고). Edge Optimization(EXP-009)에서 PyTorch FP32 → ONNX FP32 → ONNX INT8(Dynamic Quantization)을 실측 비교한 결과:
+
+| Model | Size(MB) | F1 | FPS |
+|---|---|---|---|
+| PyTorch FP32 | 5.61 | 0.698 | **25.14** |
+| ONNX FP32 | 10.74 | 0.700 | 19.20 |
+| ONNX INT8 (Dynamic) | **3.05** | 0.686 | 21.95 |
+
+"ONNX/INT8이 항상 더 빠르다"는 통념과 반대로, M3에서는 PyTorch 원본이 가장 빨랐다(PAR-003). ONNX Runtime의 CPUExecutionProvider가 Apple Silicon 네이티브 커널보다 느리고, Dynamic Quantization은 가중치만 압축할 뿐 Convolution 연산 자체를 가속하지 못하는 것이 원인으로 분석된다. 모델 크기가 중요한 실제 Edge Camera 배포 시에는 Static Quantization/CoreML 변환을 추가로 검토해야 한다(미검증, 백로그). C++ 포팅(Video Frame Reader, ROI 계산, Line Crossing, Event State Machine 등)은 아직 Stretch Goal로 남아 있다.
 
 ## 18. 프로젝트 한계
 
