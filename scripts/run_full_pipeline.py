@@ -13,6 +13,7 @@ import cv2  # noqa: E402
 from ultralytics import YOLO  # noqa: E402
 
 from bestshot.scorer import bestshot_score  # noqa: E402
+from bestshot.tracker import BestShotTracker  # noqa: E402
 from events.line_crossing import LineCrossingDetector  # noqa: E402
 from events.loitering import LoiteringDetector  # noqa: E402
 from events.roi_state_machine import ROIStateMachine, bottom_center  # noqa: E402
@@ -45,9 +46,12 @@ def main():
     line_det = LineCrossingDetector(LINE_A, LINE_B)
     loiter_det = LoiteringDetector(polygon=ROI_POLYGON, threshold_frames=int(LOITER_THRESHOLD_SEC * fps))
 
-    # Track별 BestShot 후보(관측치)를 계속 들고 있다가 마지막에 한 번에 계산
-    bestshot_candidates: dict[int, list[dict]] = {}
+    # Track별 BestShot 후보는 "지금까지 최고 점수 1개"만 O(1) 메모리로 유지한다.
+    # (EXP-010/PAR-004: 관측치를 전부 리스트에 누적하던 이전 방식은 Track이 오래
+    #  머물수록 Memory가 선형으로 증가하는 Leak이 Long Running Test에서 확인됨)
+    bestshot_tracker = BestShotTracker(frame_w, frame_h)
     last_seen: dict[int, int] = {}
+    saved = 0
 
     max_frames = 800
     idx = 0
@@ -92,9 +96,8 @@ def main():
             x1, y1, x2, y2 = [max(0, int(v)) for v in box_t]
             crop = frame[y1:y2, x1:x2].copy()
             others = [b for b in all_boxes_this_frame if b != box]
-            bestshot_candidates.setdefault(tid, []).append(
-                {"frame_idx": idx, "bbox": box_t, "conf": conf, "crop": crop, "others": others}
-            )
+            score = bestshot_score(conf, crop, box_t, others, frame_w, frame_h)
+            bestshot_tracker.observe(tid, idx, crop, score["total"])
 
         # Track 소실 처리 (10프레임 이상 미관측)
         for tid in list(last_seen.keys()):
@@ -106,6 +109,12 @@ def main():
                 loiter_det.forget_track(tid)
                 dwell = idx - loiter_det.enter_frame.get(tid, idx)
                 store.set_dwell(tid, dwell)
+                final = bestshot_tracker.forget_track(tid)
+                if final is not None and final.observation_count >= 5:
+                    path = bestshot_dir / f"track_{tid}.jpg"
+                    cv2.imwrite(str(path), final.crop)
+                    store.update_bestshot(tid, str(path.relative_to(ROOT)), round(final.score, 3))
+                    saved += 1
                 del last_seen[tid]
 
         frame_latencies_sec.append(time.perf_counter() - t_frame0)
@@ -114,26 +123,19 @@ def main():
     cap.release()
     elapsed = time.perf_counter() - t_start
 
+    # 영상이 끝난 시점까지 살아있던 Track들도 마지막으로 BestShot을 확정한다.
+    for tid in list(last_seen.keys()):
+        final = bestshot_tracker.forget_track(tid)
+        if final is not None and final.observation_count >= 5:
+            path = bestshot_dir / f"track_{tid}.jpg"
+            cv2.imwrite(str(path), final.crop)
+            store.update_bestshot(tid, str(path.relative_to(ROOT)), round(final.score, 3))
+            saved += 1
+
     import numpy as np
 
     lat_ms = np.array(frame_latencies_sec) * 1000
     p50, p95, p99 = np.percentile(lat_ms, [50, 95, 99])
-
-    # BestShot 계산 (Track마다 최고 점수 프레임을 골라 저장)
-    saved = 0
-    for tid, obs_list in bestshot_candidates.items():
-        if len(obs_list) < 5:
-            continue
-        scored = []
-        for o in obs_list:
-            s = bestshot_score(o["conf"], o["crop"], o["bbox"], o["others"], frame_w, frame_h)
-            scored.append((s["total"], o))
-        scored.sort(key=lambda x: -x[0])
-        best_total, best_obs = scored[0]
-        path = bestshot_dir / f"track_{tid}.jpg"
-        cv2.imwrite(str(path), best_obs["crop"])
-        store.update_bestshot(tid, str(path.relative_to(ROOT)), round(best_total, 3))
-        saved += 1
 
     n_tracks = len(store.query_tracks())
     n_events = len(store.query_events())

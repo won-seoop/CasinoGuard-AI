@@ -1,0 +1,10 @@
+{
+  "mode": "baseline",
+  "frames_processed": 4201,
+  "wall_clock_sec": 349.1,
+  "stop_reason": "safety_abort_rss_growth",
+  "start_rss_mb": 567.9,
+  "end_rss_mb": 3725.4,
+  "rss_growth_mb": 3157.5,
+  "exception_count": 0
+}

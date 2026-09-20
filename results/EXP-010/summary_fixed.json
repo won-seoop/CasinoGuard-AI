@@ -1,0 +1,10 @@
+{
+  "mode": "fixed",
+  "frames_processed": 15000,
+  "wall_clock_sec": 1928.8,
+  "stop_reason": "max_frames_reached",
+  "start_rss_mb": 567.7,
+  "end_rss_mb": 825.8,
+  "rss_growth_mb": 258.1,
+  "exception_count": 0
+}

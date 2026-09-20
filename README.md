@@ -106,9 +106,10 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | ID | 내용 | 상태 |
 |---|---|---|
 | FC-001 | 손상된 mp4는 OpenCV가 아예 못 엶(moov atom) | 예외 없이 안전 처리 완료 |
-| FC-002 | 배경 밀집 군중 Detection 실패 | Edge Optimization 단계 재검토 예정 |
+| FC-002 | 배경 밀집 군중 Detection 실패 | Wikimedia 영상 접근 복구되는 다음 세션으로 이월 |
 | FC-003 | BestShot Position Score 경계 페널티 부정확 | 개선 백로그 |
 | FC-004 | Track 소실 시 EXIT 유실 | **PAR-002로 수정 완료** |
+| FC-005 | BestShot 후보 무제한 누적 Memory Leak | **PAR-004로 수정 완료** |
 
 ## 14. 주요 기술 의사결정
 
@@ -122,10 +123,17 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-001**: Confidence-only BestShot → Composite Score로 개선 (정성적 검증)
 - **PAR-002**: Intrusion EXIT 이벤트 유실 → forget_track() 수정 (Unit Test로 검증)
 - **PAR-003**: "ONNX/INT8이 항상 빠르다"는 통념이 M3에서는 성립하지 않음을 실측으로 확인 (PyTorch FP32 25.1 FPS > ONNX INT8 22.0 FPS > ONNX FP32 19.2 FPS)
+- **PAR-004**: Long Running Test로 BestShot 후보 무제한 누적 Memory Leak 발견 → Incremental Best-Tracking(O(1))으로 개선 (349초 만에 +3157MB/안전중단 → 32분간 +6MB 수준으로 평탄화)
 
-## 16. Long Running Test
+## 16. Long Running Test (EXP-010, PAR-004)
 
-아직 수행하지 않음 — Stretch 단계에서 10분/30분/1시간 단위로 Memory/FPS/Dropped Frame 변화를 측정할 예정.
+Full Pipeline(Detection+Tracking+ROI/Line/Loitering+BestShot+Metadata)을 실제 사람이 찍힌 정지 장면
+(+합성 Pan/Jitter)으로 연속 실행해 Memory/FPS 안정성을 측정했다. 기존 BestShot 로직은 Track마다 관측된
+모든 crop을 무제한으로 쌓아 349초 만에 Memory가 +3.1GB 증가해 안전 중단되었고(≈9MB/초, FPS도 −12.4%
+하락), 매 프레임 즉시 채점해 최고 점수 1개만 유지하는 Incremental Best-Tracking으로 바꾼 뒤에는 32.1분
+(15,000프레임) 연속 실행에서도 Memory 증가가 워밍업 이후 사실상 0(+6MB)에 수렴함을 확인했다.
+(이번 세션은 네트워크 정책상 기존 Wikimedia 영상을 재확보할 수 없어 대체 입력을 사용함 — EXP-010
+experiment.md Decision 참고. 실제 다양한 군중 영상으로의 교차 검증은 다음 세션 Next Action으로 남김.)
 
 ## 17. Edge 환경 고려
 
@@ -170,6 +178,8 @@ python scripts/run_exp004_bestshot.py
 python scripts/run_exp005_intrusion.py
 python scripts/run_exp006_line_crossing.py
 python scripts/run_exp007_loitering.py
+python scripts/run_exp010_long_running_test.py --mode baseline  # Memory Leak 재현 (PAR-004)
+python scripts/run_exp010_long_running_test.py --mode fixed     # 수정 후 재측정
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
@@ -185,13 +195,13 @@ cctv/
   src/
     video_pipeline/      # Phase 1
     detection/           # Phase 2 평가 유틸
-    bestshot/             # Phase 4
+    bestshot/             # Phase 4 (+ tracker.py: Incremental Best, PAR-004)
     events/               # Phase 5~7 (ROI/Line/Loitering)
     metadata/             # Metadata Store (SQLite)
     api/                  # VMS Search API (FastAPI)
-  scripts/                # EXP-001~008 실행 스크립트 + 통합 파이프라인
-  tests/                  # Unit Test 50개
-  experiments/            # EXP-001~008, PAR-001~002 기록
+  scripts/                # EXP-001~010 실행 스크립트 + 통합 파이프라인
+  tests/                  # Unit Test 53개
+  experiments/            # EXP-001~010, PAR-001~004 기록
   results/                # 실행 결과(CSV, 스냅샷, BestShot 그리드)
   data/                   # raw/test 영상 (대용량은 git 제외)
 ```
