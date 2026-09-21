@@ -79,6 +79,8 @@ Confidence-only로 대표 프레임을 고르면 클로즈업/저품질 프레�
 
 Intrusion에서 발견한 **Track 소실 시 EXIT 이벤트 유실 문제(FC-004)**는 `PAR-002`로 정리하고 State Machine을 수정했다.
 
+Line Crossing은 선 근처에서 검출 박스가 몇 픽셀만 흔들려도 Crossing 이벤트가 반복 발생하는 문제(**FC-007**)가 있었다. 900프레임 재현 실험(EXP-014)에서 기존 방식은 57건 중 24쌍이 0.6초 이내 방향이 반전되는 왕복 중복이었고, 선까지의 거리가 `band_px` 이상일 때만 확정 side를 바꾸는 Hysteresis를 적용해 같은 조건에서 중복을 0건으로 제거했다(총 이벤트도 57→31건으로 정상화). Cooldown 기반 대안도 비교했으나 FPS 의존성과 기하학적 근거 부재로 채택하지 않았다 → `PAR-005`.
+
 ## 10. Metadata Pipeline (EXP-008)
 
 Track(trajectory, dwell_time, bestshot_path 등) + Event(Intrusion/LineCrossing/Loitering)를 SQLite 스키마로 통합 저장. 164 Track, 115 BestShot, 190 Event.
@@ -110,6 +112,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-003 | BestShot Position Score 경계 페널티 부정확 | 개선 백로그 |
 | FC-004 | Track 소실 시 EXIT 유실 | **PAR-002로 수정 완료** |
 | FC-005 | BestShot 후보 무제한 누적 Memory Leak | **PAR-004로 수정 완료** |
+| FC-007 | 선 근처 박스 흔들림으로 Line Crossing 왕복 중복 이벤트 | **PAR-005로 수정 완료** |
 
 ## 14. 주요 기술 의사결정
 
@@ -124,6 +127,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-002**: Intrusion EXIT 이벤트 유실 → forget_track() 수정 (Unit Test로 검증)
 - **PAR-003**: "ONNX/INT8이 항상 빠르다"는 통념이 M3에서는 성립하지 않음을 실측으로 확인 (PyTorch FP32 25.1 FPS > ONNX INT8 22.0 FPS > ONNX FP32 19.2 FPS)
 - **PAR-004**: Long Running Test로 BestShot 후보 무제한 누적 Memory Leak 발견 → Incremental Best-Tracking(O(1))으로 개선 (349초 만에 +3157MB/안전중단 → 32분간 +6MB 수준으로 평탄화)
+- **PAR-005**: Line Crossing 왕복 중복 이벤트(FC-007) → 선까지 거리 기반 Hysteresis(band_px)로 개선, Cooldown 대안 대비 채택 이유 포함 (900프레임 재현에서 중복 24쌍 → 0쌍, 총 이벤트 57 → 31건)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -180,6 +184,7 @@ python scripts/run_exp006_line_crossing.py
 python scripts/run_exp007_loitering.py
 python scripts/run_exp010_long_running_test.py --mode baseline  # Memory Leak 재현 (PAR-004)
 python scripts/run_exp010_long_running_test.py --mode fixed     # 수정 후 재측정
+python scripts/run_exp014_line_crossing_hysteresis.py           # FC-007 재현 + band_px A/B (PAR-005)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py

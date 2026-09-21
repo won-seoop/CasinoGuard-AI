@@ -1,0 +1,31 @@
+{
+  "n_frames": 900,
+  "line_y": 874.0713500976562,
+  "cooldown_frames": 15,
+  "summary": {
+    "band_0": {
+      "total_events": 57,
+      "duplicate_reversal_pairs": 24
+    },
+    "band_3": {
+      "total_events": 32,
+      "duplicate_reversal_pairs": 0
+    },
+    "band_5": {
+      "total_events": 31,
+      "duplicate_reversal_pairs": 0
+    },
+    "band_10": {
+      "total_events": 12,
+      "duplicate_reversal_pairs": 0
+    },
+    "band_20": {
+      "total_events": 0,
+      "duplicate_reversal_pairs": 0
+    },
+    "cooldown_altA": {
+      "total_events": 33,
+      "duplicate_reversal_pairs": 0
+    }
+  }
+}

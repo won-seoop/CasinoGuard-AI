@@ -23,6 +23,7 @@ PERSON_CLASS_ID = 0
 ROI_POLYGON = [(950, 650), (1750, 650), (1850, 1080), (700, 1080)]
 LINE_A, LINE_B = (700, 850), (1900, 780)
 LOITER_THRESHOLD_SEC = 8  # EXP-007 분석(횡단보도는 20~30초는 과함)을 반영해 데모용으로 8초 사용
+LINE_CROSSING_BAND_PX = 5  # FC-007/EXP-014/PAR-005: 선 근처 흔들림으로 인한 왕복 중복 이벤트 방지
 
 
 def main():
@@ -43,7 +44,7 @@ def main():
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     roi_sm = ROIStateMachine(polygon=ROI_POLYGON)
-    line_det = LineCrossingDetector(LINE_A, LINE_B)
+    line_det = LineCrossingDetector(LINE_A, LINE_B, band_px=LINE_CROSSING_BAND_PX)
     loiter_det = LoiteringDetector(polygon=ROI_POLYGON, threshold_frames=int(LOITER_THRESHOLD_SEC * fps))
 
     # Track별 BestShot 후보는 "지금까지 최고 점수 1개"만 O(1) 메모리로 유지한다.
