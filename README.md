@@ -1,5 +1,8 @@
 # CasinoGuard AI
 
+<img width="2560" height="1656" alt="image" src="https://github.com/user-attachments/assets/f60a6888-0d0c-4c4d-a802-4c91e79fbcce" />
+
+
 카지노 환경을 가정한 Edge AI 기반 지능형 CCTV 영상관제 시스템 — Computer Vision / AI 영상분석 / Edge AI 직무(특히 한화비전) 취업 준비를 위한 포트폴리오 프로젝트.
 
 전체 프로젝트 지침은 [CLAUDE.md](CLAUDE.md), 실험/문제해결 기록은 Notion([CasinoGuard AI](https://app.notion.com/p/3e05323e448380efa562c79e81f3f6a4))에 있다. 이 README는 완성된 Core MVP를 요약한다.
