@@ -1,0 +1,8 @@
+{
+  "frames_processed": 300,
+  "n_tracks_total": 6,
+  "n_tracks_dwell_nonzero_buggy": 0,
+  "n_tracks_dwell_nonzero_fixed": 5,
+  "pct_dwell_nonzero_buggy": 0.0,
+  "pct_dwell_nonzero_fixed": 83.3
+}

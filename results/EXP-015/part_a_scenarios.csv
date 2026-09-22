@@ -1,0 +1,4 @@
+ground_truth_dwell_frames,buggy_dwell_frames,alt_a_reorder_dwell_frames,alt_b_dwell_counter_frames,scenario
+40,0,50,40,occluded_while_inside
+30,0,0,30,left_roi_before_vanishing
+40,0,0,40,multi_visit_reentry

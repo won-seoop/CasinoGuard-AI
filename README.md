@@ -85,6 +85,8 @@ Line Crossing은 선 근처에서 검출 박스가 몇 픽셀만 흔들려도 Cr
 
 Track(trajectory, dwell_time, bestshot_path 등) + Event(Intrusion/LineCrossing/Loitering)를 SQLite 스키마로 통합 저장. 164 Track, 115 BestShot, 190 Event.
 
+저장되는 `dwell_frames`가 항상 0이었던 문제(**FC-006**)를 EXP-015에서 재현·수정했다. 원인은 단순 호출 순서가 아니라 Loitering의 "연속 체류" 상태를 VMS의 "누적 총 체류 시간" 집계에 그대로 재사용한 설계였음을 확인하고, 책임을 분리한 `DwellCounter`로 고쳤다(`PAR-006`).
+
 ## 11. VMS Search (EXP-008)
 
 FastAPI로 최소 기능만 구현(Microservice/K8s/복잡한 인증 없음):
@@ -112,6 +114,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-003 | BestShot Position Score 경계 페널티 부정확 | 개선 백로그 |
 | FC-004 | Track 소실 시 EXIT 유실 | **PAR-002로 수정 완료** |
 | FC-005 | BestShot 후보 무제한 누적 Memory Leak | **PAR-004로 수정 완료** |
+| FC-006 | Track 체류시간(dwell_frames)이 전부 0으로 저장됨 | **PAR-006로 수정 완료** |
 | FC-007 | 선 근처 박스 흔들림으로 Line Crossing 왕복 중복 이벤트 | **PAR-005로 수정 완료** |
 
 ## 14. 주요 기술 의사결정
@@ -128,6 +131,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-003**: "ONNX/INT8이 항상 빠르다"는 통념이 M3에서는 성립하지 않음을 실측으로 확인 (PyTorch FP32 25.1 FPS > ONNX INT8 22.0 FPS > ONNX FP32 19.2 FPS)
 - **PAR-004**: Long Running Test로 BestShot 후보 무제한 누적 Memory Leak 발견 → Incremental Best-Tracking(O(1))으로 개선 (349초 만에 +3157MB/안전중단 → 32분간 +6MB 수준으로 평탄화)
 - **PAR-005**: Line Crossing 왕복 중복 이벤트(FC-007) → 선까지 거리 기반 Hysteresis(band_px)로 개선, Cooldown 대안 대비 채택 이유 포함 (900프레임 재현에서 중복 24쌍 → 0쌍, 총 이벤트 57 → 31건)
+- **PAR-006**: Track 체류시간(dwell_frames)이 항상 0으로 저장되는 문제(FC-006) → 호출 순서 교정만으로는 실제 케이스의 2/3가 여전히 실패함을 실측으로 확인하고, Loitering의 연속-스트릭 상태와 분리된 DwellCounter로 근본 수정 (통제된 시나리오 3종 모두 Ground Truth와 일치, 실제 YOLO+ByteTrack 실행에서 dwell>0 Track 비율 0%→83.3%)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -185,6 +189,7 @@ python scripts/run_exp007_loitering.py
 python scripts/run_exp010_long_running_test.py --mode baseline  # Memory Leak 재현 (PAR-004)
 python scripts/run_exp010_long_running_test.py --mode fixed     # 수정 후 재측정
 python scripts/run_exp014_line_crossing_hysteresis.py           # FC-007 재현 + band_px A/B (PAR-005)
+python scripts/run_exp015_dwell_time_fix.py                     # FC-006 재현 + DwellCounter 수정 검증 (PAR-006)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
@@ -201,12 +206,12 @@ cctv/
     video_pipeline/      # Phase 1
     detection/           # Phase 2 평가 유틸
     bestshot/             # Phase 4 (+ tracker.py: Incremental Best, PAR-004)
-    events/               # Phase 5~7 (ROI/Line/Loitering)
+    events/               # Phase 5~7 (ROI/Line/Loitering) + dwell.py (누적 체류, PAR-006)
     metadata/             # Metadata Store (SQLite)
     api/                  # VMS Search API (FastAPI)
-  scripts/                # EXP-001~010 실행 스크립트 + 통합 파이프라인
-  tests/                  # Unit Test 53개
-  experiments/            # EXP-001~010, PAR-001~004 기록
+  scripts/                # EXP-001~015 실행 스크립트 + 통합 파이프라인
+  tests/                  # Unit Test 60개 이상
+  experiments/            # EXP-001~010/014/015, PAR-001~006 기록
   results/                # 실행 결과(CSV, 스냅샷, BestShot 그리드)
   data/                   # raw/test 영상 (대용량은 git 제외)
 ```

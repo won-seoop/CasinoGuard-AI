@@ -14,6 +14,7 @@ from ultralytics import YOLO  # noqa: E402
 
 from bestshot.scorer import bestshot_score  # noqa: E402
 from bestshot.tracker import BestShotTracker  # noqa: E402
+from events.dwell import DwellCounter  # noqa: E402
 from events.line_crossing import LineCrossingDetector  # noqa: E402
 from events.loitering import LoiteringDetector  # noqa: E402
 from events.roi_state_machine import ROIStateMachine, bottom_center  # noqa: E402
@@ -46,6 +47,10 @@ def main():
     roi_sm = ROIStateMachine(polygon=ROI_POLYGON)
     line_det = LineCrossingDetector(LINE_A, LINE_B, band_px=LINE_CROSSING_BAND_PX)
     loiter_det = LoiteringDetector(polygon=ROI_POLYGON, threshold_frames=int(LOITER_THRESHOLD_SEC * fps))
+    # FC-006/PAR-006: loiter_det.enter_frame은 "연속 체류 스트릭"만 표현하고 ROI를
+    # 벗어나면 즉시 리셋되므로, VMS Search가 원하는 "총 누적 체류 시간"에는 쓸 수
+    # 없다(재방문 시 이전 방문 기록이 사라짐). 책임을 분리한 DwellCounter로 누적한다.
+    dwell_counter = DwellCounter(polygon=ROI_POLYGON)
 
     # Track별 BestShot 후보는 "지금까지 최고 점수 1개"만 O(1) 메모리로 유지한다.
     # (EXP-010/PAR-004: 관측치를 전부 리스트에 누적하던 이전 방식은 Track이 오래
@@ -83,6 +88,7 @@ def main():
             zone = "restricted_zone" if roi_sm.states.get(tid) == "INSIDE" else None
             line_ev = line_det.update(tid, point, idx)
             loiter_ev = loiter_det.update(tid, point, idx)
+            dwell_counter.update(tid, point)
 
             # Track row를 먼저 upsert해서 FK 제약을 만족시킨 다음 이벤트를 기록한다.
             store.upsert_track(tid, "person", idx, conf, box_t, point, zone)
@@ -108,8 +114,7 @@ def main():
                     store.add_event(tid, "INTRUSION_EXIT", idx, {"zone": "restricted_zone", "reason": "track_lost"})
                 line_det.forget_track(tid)
                 loiter_det.forget_track(tid)
-                dwell = idx - loiter_det.enter_frame.get(tid, idx)
-                store.set_dwell(tid, dwell)
+                store.set_dwell(tid, dwell_counter.get(tid))
                 final = bestshot_tracker.forget_track(tid)
                 if final is not None and final.observation_count >= 5:
                     path = bestshot_dir / f"track_{tid}.jpg"
@@ -124,8 +129,9 @@ def main():
     cap.release()
     elapsed = time.perf_counter() - t_start
 
-    # 영상이 끝난 시점까지 살아있던 Track들도 마지막으로 BestShot을 확정한다.
+    # 영상이 끝난 시점까지 살아있던 Track들도 마지막으로 BestShot/Dwell을 확정한다.
     for tid in list(last_seen.keys()):
+        store.set_dwell(tid, dwell_counter.get(tid))
         final = bestshot_tracker.forget_track(tid)
         if final is not None and final.observation_count >= 5:
             path = bestshot_dir / f"track_{tid}.jpg"
