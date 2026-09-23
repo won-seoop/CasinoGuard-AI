@@ -1,0 +1,46 @@
+{
+  "n_frames": 900,
+  "frame_w": 810,
+  "frame_h": 1080,
+  "min_track_len": 5,
+  "heatmap": {
+    "baseline_total_hits": 3625.0,
+    "gated_total_hits": 3621.0,
+    "hits_removed": 4.0,
+    "hits_removed_pct": 0.1103448275862069,
+    "total_unique_tracks": 10,
+    "short_track_count": 0,
+    "sustained_track_count": 10,
+    "feeder_discarded_track_count": 1,
+    "feeder_discarded_point_count": 4,
+    "feeder_confirmed_track_count": 11
+  },
+  "crowd": {
+    "grid_rows": 3,
+    "grid_cols": 4,
+    "cell_count_distribution": {
+      "min": 0.0,
+      "p50": 0.0,
+      "p90": 1.0,
+      "max": 3.0
+    },
+    "thresholds_percentile": {
+      "normal_max": 0.0,
+      "busy_max": 1.0
+    },
+    "thresholds_naive_fixed": {
+      "normal_max": 0.0,
+      "busy_max": 4.800000000000001
+    },
+    "classification_counts_percentile": {
+      "Normal": 8100,
+      "Busy": 1841,
+      "Crowded": 859
+    },
+    "classification_counts_naive": {
+      "Normal": 8100,
+      "Busy": 2700,
+      "Crowded": 0
+    }
+  }
+}

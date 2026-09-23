@@ -1,0 +1,11 @@
+metric,value
+baseline_total_hits,3625.0
+gated_total_hits,3621.0
+hits_removed,4.0
+hits_removed_pct,0.1103448275862069
+total_unique_tracks,10
+short_track_count,0
+sustained_track_count,10
+feeder_discarded_track_count,1
+feeder_discarded_point_count,4
+feeder_confirmed_track_count,11
