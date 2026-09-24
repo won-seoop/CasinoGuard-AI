@@ -84,6 +84,20 @@ Intrusion에서 발견한 **Track 소실 시 EXIT 이벤트 유실 문제(FC-004
 
 Line Crossing은 선 근처에서 검출 박스가 몇 픽셀만 흔들려도 Crossing 이벤트가 반복 발생하는 문제(**FC-007**)가 있었다. 900프레임 재현 실험(EXP-014)에서 기존 방식은 57건 중 24쌍이 0.6초 이내 방향이 반전되는 왕복 중복이었고, 선까지의 거리가 `band_px` 이상일 때만 확정 side를 바꾸는 Hysteresis를 적용해 같은 조건에서 중복을 0건으로 제거했다(총 이벤트도 57→31건으로 정상화). Cooldown 기반 대안도 비교했으나 FPS 의존성과 기하학적 근거 부재로 채택하지 않았다 → `PAR-005`.
 
+### Adaptive Recording (Stretch, EXP-017, **PAR-008**)
+
+지침 23의 Baseline(항상 고화질 녹화)과 개선안(No Person→Low FPS / Person→Normal FPS /
+Security Event→High FPS+Event Clip)을 구현했다. bus.jpg+Pan 900프레임(IDLE 301 /
+NORMAL 338 / EVENT 261) 시나리오에서 연속 녹화 저장량이 18.7% 절감됨을 확인했다.
+Event Clip(-10s~+10s)을 Event마다 독립적으로 만들면(대안 A) 간격이 짧은 두 Intrusion
+Event의 Window가 완전히 겹쳐 361프레임(41.4%)이 중복 저장되는 것을 발견하고, 겹치거나
+인접한 Window를 병합하는 방식(대안 B)으로 개선해 중복을 0으로 만들었다(`PAR-008`).
+반대로 Event Clip까지 포함한 총 저장량은 이 36초짜리 데모에서는 Pre/Post-Roll(20초)이
+전체 길이의 절반을 넘어 오히려 Baseline보다 47.7% 많아지는 역전 현상도 정직하게 기록했다
+(장시간 실제 운영 환경에서 재검증 필요, EXP-017 참고). 최초 ROI 설계(오른쪽 절반)가
+bus.jpg에 원래 있던 사람과 겹쳐 NORMAL 구간이 0프레임만 나온 실험 설계 버그도
+Failure Case로 기록하고 중앙 대역 ROI로 재설계해 해결했다.
+
 ### Heatmap & Crowd Analysis (Stretch, EXP-016, **PAR-007**)
 
 지침 21/22의 Baseline을 구현했다. Heatmap은 Detection Center 누적(Baseline)과 Track이 `min_track_len` 이상 관측된 뒤에만 누적하는 Track-Gated 누적(대안)을 함께 제공한다(이번 bus.jpg+Pan 12px 실측에서는 노이즈 제거 효과가 0.11%로 미미했음을 정직하게 기록). Crowd Analysis는 "그럴듯한" 고정 Threshold(한 셀에 4~5명=Crowded)를 실측 분포에 적용하자 900프레임 내내 Crowded 등급이 한 번도 발동하지 않는 문제를 발견했고, 실측 Percentile(p50/p90) 기반 Threshold로 바꿔 전체의 7.9%(859/10,800)를 정확히 Crowded로 분리했다(`PAR-007`).
@@ -140,6 +154,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-005**: Line Crossing 왕복 중복 이벤트(FC-007) → 선까지 거리 기반 Hysteresis(band_px)로 개선, Cooldown 대안 대비 채택 이유 포함 (900프레임 재현에서 중복 24쌍 → 0쌍, 총 이벤트 57 → 31건)
 - **PAR-006**: Track 체류시간(dwell_frames)이 항상 0으로 저장되는 문제(FC-006) → 호출 순서 교정만으로는 실제 케이스의 2/3가 여전히 실패함을 실측으로 확인하고, Loitering의 연속-스트릭 상태와 분리된 DwellCounter로 근본 수정 (통제된 시나리오 3종 모두 Ground Truth와 일치, 실제 YOLO+ByteTrack 실행에서 dwell>0 Track 비율 0%→83.3%)
 - **PAR-007**: Crowd Analysis 고정 Threshold가 실측 분포와 어긋나 Crowded 등급이 전혀 발동하지 않는 문제(Degenerate Classification) → Percentile 기반 Threshold 도출로 개선 (Crowded 분류 비율 0.0%→7.9%, 859/10,800건)
+- **PAR-008**: Adaptive Recording Event Clip을 Event마다 독립적으로 저장하면(대안 A) 간격이 짧은 두 Event의 Window가 겹쳐 중복 저장되는 문제 → 겹치거나 인접한 Window를 병합하는 방식(대안 B)으로 개선 (중복 361프레임(41.4%) → 0, 연속 녹화 저장량 18.7% 절감)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -199,6 +214,7 @@ python scripts/run_exp010_long_running_test.py --mode fixed     # 수정 후 재
 python scripts/run_exp014_line_crossing_hysteresis.py           # FC-007 재현 + band_px A/B (PAR-005)
 python scripts/run_exp015_dwell_time_fix.py                     # FC-006 재현 + DwellCounter 수정 검증 (PAR-006)
 python scripts/run_exp016_heatmap_crowd.py                      # Heatmap Detection Center vs Track-Gated, Crowd Threshold 비교 (PAR-007)
+python scripts/run_exp017_adaptive_recording.py                 # Adaptive Recording Baseline vs 개선, Event Clip 병합 A/B (PAR-008)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
@@ -217,11 +233,12 @@ cctv/
     bestshot/             # Phase 4 (+ tracker.py: Incremental Best, PAR-004)
     events/               # Phase 5~7 (ROI/Line/Loitering) + dwell.py (누적 체류, PAR-006)
     analytics/            # Heatmap + Crowd Analysis (EXP-016, PAR-007)
+    recording/            # Adaptive Recording Tier/Event Clip 계획 (EXP-017, PAR-008)
     metadata/             # Metadata Store (SQLite)
     api/                  # VMS Search API (FastAPI)
-  scripts/                # EXP-001~016 실행 스크립트 + 통합 파이프라인
-  tests/                  # Unit Test 75개 이상
-  experiments/            # EXP-001~010/014~016, PAR-001~007 기록
+  scripts/                # EXP-001~017 실행 스크립트 + 통합 파이프라인
+  tests/                  # Unit Test 90개 이상
+  experiments/            # EXP-001~010/014~017, PAR-001~008 기록
   results/                # 실행 결과(CSV, 스냅샷, BestShot 그리드)
   data/                   # raw/test 영상 (대용량은 git 제외)
 ```

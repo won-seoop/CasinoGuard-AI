@@ -1,0 +1,168 @@
+{
+  "n_frames": 900,
+  "assumed_fps": 25.0,
+  "frame_w": 810,
+  "frame_h": 1080,
+  "config": {
+    "pre_roll_frames": 250,
+    "post_roll_frames": 250,
+    "idle_frame_stride": 5,
+    "idle_scale": 0.5
+  },
+  "phase_layout": {
+    "idle": [
+      0,
+      300
+    ],
+    "normal": [
+      300,
+      600
+    ],
+    "event": [
+      600,
+      900
+    ]
+  },
+  "person_present_frame_count": 599,
+  "event_active_frame_count": 151,
+  "tier_counts": {
+    "idle": 301,
+    "normal": 338,
+    "event": 261
+  },
+  "roi_events_raw": [
+    {
+      "track_id": 3,
+      "event_type": "ENTER",
+      "frame_idx": 639
+    },
+    {
+      "track_id": 1,
+      "event_type": "ENTER",
+      "frame_idx": 666
+    },
+    {
+      "track_id": 1,
+      "event_type": "EXIT",
+      "frame_idx": 687
+    },
+    {
+      "track_id": 3,
+      "event_type": "EXIT",
+      "frame_idx": 715
+    },
+    {
+      "track_id": 3,
+      "event_type": "ENTER",
+      "frame_idx": 789
+    },
+    {
+      "track_id": 1,
+      "event_type": "ENTER",
+      "frame_idx": 819
+    },
+    {
+      "track_id": 1,
+      "event_type": "EXIT",
+      "frame_idx": 834
+    },
+    {
+      "track_id": 3,
+      "event_type": "EXIT",
+      "frame_idx": 864
+    }
+  ],
+  "event_intervals": [
+    {
+      "event_id": 0,
+      "start_frame": 639,
+      "end_frame": 714
+    },
+    {
+      "event_id": 1,
+      "start_frame": 789,
+      "end_frame": 863
+    }
+  ],
+  "baseline": {
+    "path": "results/EXP-017/videos/baseline_always_high_quality.mp4",
+    "frames_written": 900,
+    "file_size_bytes": 22836795,
+    "cpu_time_sec": 10.164964999999995,
+    "wall_time_sec": 10.309384904000012
+  },
+  "adaptive": {
+    "idle_stream": {
+      "path": "results/EXP-017/videos/adaptive_idle_low_fps.mp4",
+      "frames_written": 61,
+      "file_size_bytes": 1098527
+    },
+    "active_stream": {
+      "path": "results/EXP-017/videos/adaptive_active_stream.mp4",
+      "frames_written": 599,
+      "file_size_bytes": 17462442
+    },
+    "event_clips": [
+      {
+        "clip_id": 0,
+        "event_ids": [
+          0,
+          1
+        ],
+        "start_frame": 389,
+        "end_frame": 899,
+        "expected_frames": 511,
+        "actual_frames_written": 511,
+        "frames_missing": 0,
+        "file_size_bytes": 15173104
+      }
+    ],
+    "cpu_time_sec": 11.196317000000008,
+    "wall_time_sec": 11.286977311999976
+  },
+  "storage": {
+    "baseline_bytes": 22836795,
+    "adaptive_continuous_bytes": 18560969,
+    "adaptive_with_event_clips_bytes": 33734073,
+    "storage_saving_pct_continuous_only": 18.72340667768835,
+    "storage_saving_pct_with_clips": -47.718070771314444
+  },
+  "file_write_count": {
+    "baseline": 900,
+    "adaptive_idle": 61,
+    "adaptive_active": 599,
+    "adaptive_total": 660
+  },
+  "cpu_usage_sec": {
+    "baseline": 10.164964999999995,
+    "adaptive": 11.196317000000008
+  },
+  "event_clip_completeness": {
+    "clips": [
+      {
+        "clip_id": 0,
+        "event_ids": [
+          0,
+          1
+        ],
+        "start_frame": 389,
+        "end_frame": 899,
+        "expected_frames": 511,
+        "actual_frames_written": 511,
+        "frames_missing": 0,
+        "file_size_bytes": 15173104
+      }
+    ],
+    "any_frames_missing": false
+  },
+  "event_clip_merge_comparison": {
+    "alternative_a_no_merge": {
+      "clip_count": 2,
+      "total_planned_frames": 872
+    },
+    "alternative_b_merge_adjacent": {
+      "clip_count": 1,
+      "total_planned_frames": 511
+    }
+  }
+}

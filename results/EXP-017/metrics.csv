@@ -1,0 +1,6 @@
+metric,baseline,adaptive
+file_size_bytes,22836795,18560969
+frames_written,900,660
+cpu_time_sec,10.164964999999995,11.196317000000008
+storage_saving_pct_continuous_only,-,18.72340667768835
+storage_saving_pct_with_clips,-,-47.718070771314444
