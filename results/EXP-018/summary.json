@@ -1,0 +1,64 @@
+{
+  "canvas": {
+    "w": 810,
+    "h": 1080
+  },
+  "patch": {
+    "w": 192,
+    "h": 504,
+    "source_conf": 0.8782547116279602
+  },
+  "config": {
+    "legacy_margin_ratio": 0.02,
+    "new_boundary_eps": 2.0,
+    "near_edge_bucket_px": 20,
+    "step_px": 8
+  },
+  "n_frames_total": 305,
+  "n_frames_scored": 301,
+  "n_frames_not_detected": 4,
+  "confusion_legacy": {
+    "tp": 150,
+    "fp": 11,
+    "tn": 140,
+    "fn": 0,
+    "n": 301,
+    "precision": 0.9316770186335404,
+    "recall": 1.0,
+    "accuracy": 0.9634551495016611
+  },
+  "confusion_new": {
+    "tp": 149,
+    "fp": 3,
+    "tn": 148,
+    "fn": 1,
+    "n": 301,
+    "precision": 0.9802631578947368,
+    "recall": 0.9933333333333333,
+    "accuracy": 0.9867109634551495
+  },
+  "near_edge_not_clipped_false_positive_rate": {
+    "legacy": {
+      "n": 12,
+      "flagged_as_clipped": 11,
+      "flagged_rate": 0.9166666666666666
+    },
+    "new": {
+      "n": 12,
+      "flagged_as_clipped": 3,
+      "flagged_rate": 0.25
+    }
+  },
+  "clipped_recall_bucket": {
+    "legacy": {
+      "n": 150,
+      "flagged_as_clipped": 150,
+      "flagged_rate": 1.0
+    },
+    "new": {
+      "n": 150,
+      "flagged_as_clipped": 149,
+      "flagged_rate": 0.9933333333333333
+    }
+  }
+}

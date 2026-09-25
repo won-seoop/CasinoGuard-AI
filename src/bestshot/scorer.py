@@ -34,12 +34,53 @@ def size_score(bbox: tuple[float, float, float, float], frame_w: int, frame_h: i
     return float(min(area_ratio / 0.02, 1.0))
 
 
-def position_score(bbox: tuple[float, float, float, float], frame_w: int, frame_h: int, margin_ratio: float = 0.02) -> float:
-    """화면 경계에 붙어 잘린 사람일수록 낮은 점수."""
+def position_score_margin_legacy(
+    bbox: tuple[float, float, float, float], frame_w: int, frame_h: int, margin_ratio: float = 0.02
+) -> float:
+    """[FC-003, EXP-018에서 교체됨] 화면 경계 margin(기본 2%) '근접' 여부만 보고
+    0.3/1.0 이진 점수를 매기던 이전 구현. 실제로 잘리지 않은 사진도 경계에
+    가깝기만 하면 낮은 점수를 받는 문제(FC-003)가 있어 production에서는
+    더 이상 쓰지 않는다. EXP-018에서 position_score()와의 비교 baseline으로만
+    남겨둔다."""
     x1, y1, x2, y2 = bbox
     margin_x, margin_y = frame_w * margin_ratio, frame_h * margin_ratio
     touches_edge = x1 <= margin_x or y1 <= margin_y or x2 >= frame_w - margin_x or y2 >= frame_h - margin_y
     return 0.3 if touches_edge else 1.0
+
+
+def position_score(
+    bbox: tuple[float, float, float, float], frame_w: int, frame_h: int, boundary_eps: float = 2.0
+) -> float:
+    """화면 경계에 실제로 잘린 정도에 따라 점수를 매긴다 (FC-003 수정, EXP-018).
+
+    이전 구현(position_score_margin_legacy)은 bbox가 경계에서 margin_ratio(기본 2%,
+    1080p 기준 약 21px) 이내로 '근접'하기만 하면 실제 잘림 여부와 무관하게 0.3점을
+    줬다. 이는 "경계 근접"과 "실제로 잘려서 몸의 일부가 안 보임"을 혼동한 것이다.
+
+    실제로 카메라 프레임은 사람의 '보이는 부분'만 담으므로, 몸이 잘린 경우 Detector가
+    내놓는 bbox 좌표 자체가 이미지 경계(0 또는 frame_w/frame_h)에 거의 정확히 맞닿는다.
+    반면 사람이 경계 근처에 서 있어도 몸 전체가 보이면 bbox와 경계 사이에 여백이 남는다.
+    boundary_eps(기본 2px)는 이 여백을 요구하되, Detector 좌표의 반올림 오차만 흡수할
+    정도로 작게 잡아 "근접"과 "실제로 닿음"을 구분한다.
+
+    닿은 변의 개수로 등급을 나눈다 (변 1개만 닿으면 프레임 한쪽으로 나가는 중,
+    2개 이상 닿으면 모서리로 빠지는 중이라 더 많이 잘렸을 가능성이 높다).
+    """
+    x1, y1, x2, y2 = bbox
+    touched = 0
+    if x1 <= boundary_eps:
+        touched += 1
+    if y1 <= boundary_eps:
+        touched += 1
+    if x2 >= frame_w - boundary_eps:
+        touched += 1
+    if y2 >= frame_h - boundary_eps:
+        touched += 1
+    if touched == 0:
+        return 1.0
+    if touched == 1:
+        return 0.6
+    return 0.2
 
 
 def occlusion_score(bbox: tuple[float, float, float, float], other_boxes: list[tuple[float, float, float, float]]) -> float:
