@@ -11,6 +11,7 @@ data/test/*.webm
 results/videos/
 results/EXP-001/*.mp4
 results/EXP-017/videos/
+results/EXP-019/videos/
 *.pt
 *.onnx
 

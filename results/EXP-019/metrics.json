@@ -1,0 +1,118 @@
+{
+  "n_frames": 1600,
+  "assumed_fps": 25.0,
+  "frame_w": 810,
+  "frame_h": 1080,
+  "phase_layout": {
+    "idle": [
+      0,
+      1200
+    ],
+    "normal": [
+      1200,
+      1300
+    ],
+    "event_trigger": [
+      1300,
+      1600
+    ]
+  },
+  "tier_counts": {
+    "idle": 1201,
+    "normal": 138,
+    "event": 261
+  },
+  "event_intervals": [
+    {
+      "event_id": 0,
+      "start_frame": 1339,
+      "end_frame": 1414
+    },
+    {
+      "event_id": 1,
+      "start_frame": 1490,
+      "end_frame": 1564
+    }
+  ],
+  "clip_plan": {
+    "start_frame": 1089,
+    "end_frame": 1599,
+    "n_frames": 511
+  },
+  "clip_fully_inside_active_stream": false,
+  "clip_idle_prefix_frames": 112,
+  "gop_results": {
+    "1": {
+      "active_stream": {
+        "cpu_time_sec": 0.4948880000000031,
+        "wall_time_sec": 2.5100395169999956,
+        "file_size_bytes": 29929152,
+        "frames_written": 399
+      },
+      "clip_full_reencode": {
+        "cpu_time_sec": 0.43302900000000477,
+        "wall_time_sec": 3.0905763129999286,
+        "file_size_bytes": 37012602,
+        "expected_frames": 511,
+        "actual_frames": 511,
+        "frame_diff": 0
+      },
+      "clip_naive_copy": {
+        "cpu_time_sec": 0.0003600000000005821,
+        "wall_time_sec": 0.04771128499999122,
+        "file_size_bytes": 29929152,
+        "expected_frames_from_active_portion_only": 399,
+        "actual_frames": 399,
+        "frame_diff_vs_active_portion": 0,
+        "missing_idle_prefix_frames": 112,
+        "is_complete_clip": false
+      },
+      "clip_hybrid": {
+        "cpu_time_sec": 0.0624610000000132,
+        "wall_time_sec": 0.7841828819998682,
+        "file_size_bytes": 37163497,
+        "idle_part_reencoded_frames": 112,
+        "expected_frames": 511,
+        "actual_frames": 511,
+        "frame_diff": 0,
+        "is_complete_clip": true
+      }
+    },
+    "25": {
+      "active_stream": {
+        "cpu_time_sec": 0.31585699999999406,
+        "wall_time_sec": 1.950206019999996,
+        "file_size_bytes": 4722960,
+        "frames_written": 399
+      },
+      "clip_full_reencode": {
+        "cpu_time_sec": 0.46744300000000294,
+        "wall_time_sec": 2.837742323999919,
+        "file_size_bytes": 5713451,
+        "expected_frames": 511,
+        "actual_frames": 511,
+        "frame_diff": 0
+      },
+      "clip_naive_copy": {
+        "cpu_time_sec": 0.0003469999999765605,
+        "wall_time_sec": 0.03666704200009008,
+        "file_size_bytes": 4722960,
+        "expected_frames_from_active_portion_only": 399,
+        "actual_frames": 399,
+        "frame_diff_vs_active_portion": 0,
+        "missing_idle_prefix_frames": 112,
+        "is_complete_clip": false
+      },
+      "clip_hybrid": {
+        "cpu_time_sec": 0.08546799999993482,
+        "wall_time_sec": 0.5679533900001843,
+        "file_size_bytes": 5763825,
+        "idle_part_reencoded_frames": 112,
+        "expected_frames": 511,
+        "actual_frames": 511,
+        "frame_diff": 0,
+        "is_complete_clip": true
+      }
+    }
+  }
+}
