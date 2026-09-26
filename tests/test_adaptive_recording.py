@@ -8,6 +8,8 @@ import pytest  # noqa: E402
 from recording.adaptive import (  # noqa: E402
     EventInterval,
     RecordingTier,
+    active_stream_positions,
+    clip_window_all_active,
     compute_tier_sequence,
     event_intervals_from_active_flags,
     plan_event_clips,
@@ -152,3 +154,38 @@ def test_plan_event_clips_alternative_a_no_merge_keeps_overlap_duplicated():
 
 def test_plan_event_clips_no_events_returns_empty():
     assert plan_event_clips([], pre_roll_frames=5, post_roll_frames=5, total_frames=100) == []
+
+
+def test_active_stream_positions_skips_idle_frames():
+    tiers = [
+        RecordingTier.IDLE,
+        RecordingTier.IDLE,
+        RecordingTier.NORMAL,
+        RecordingTier.EVENT,
+        RecordingTier.IDLE,
+        RecordingTier.NORMAL,
+    ]
+    assert active_stream_positions(tiers) == [None, None, 0, 1, None, 2]
+
+
+def test_active_stream_positions_all_active_is_identity():
+    tiers = [RecordingTier.NORMAL, RecordingTier.EVENT, RecordingTier.NORMAL]
+    assert active_stream_positions(tiers) == [0, 1, 2]
+
+
+def test_active_stream_positions_all_idle_is_all_none():
+    tiers = [RecordingTier.IDLE, RecordingTier.IDLE]
+    assert active_stream_positions(tiers) == [None, None]
+
+
+def test_clip_window_all_active_true_when_no_idle_inside():
+    tiers = [RecordingTier.NORMAL, RecordingTier.EVENT, RecordingTier.EVENT, RecordingTier.NORMAL]
+    assert clip_window_all_active(tiers, 0, 3) is True
+    assert clip_window_all_active(tiers, 1, 2) is True
+
+
+def test_clip_window_all_active_false_when_preroll_dips_into_idle():
+    # Pre-Roll이 IDLE 구간(index 0,1)까지 파고든 경우 -> Stream Copy만으로는 불완전
+    tiers = [RecordingTier.IDLE, RecordingTier.IDLE, RecordingTier.NORMAL, RecordingTier.EVENT]
+    assert clip_window_all_active(tiers, 0, 3) is False
+    assert clip_window_all_active(tiers, 2, 3) is True

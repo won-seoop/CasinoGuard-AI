@@ -148,3 +148,33 @@ def plan_event_clips(
 def total_planned_frames(clips: list[EventClipPlan]) -> int:
     """Clip Plan들이 실제로 저장할 총 프레임 수 (겹치는 구간이 있으면 중복 카운트됨 -> 낭비 측정용)."""
     return sum(c.end_frame - c.start_frame + 1 for c in clips)
+
+
+def active_stream_positions(tiers: list[RecordingTier]) -> list[int | None]:
+    """원본 Frame Index -> Active Stream(IDLE이 아닌 프레임만 순서대로 저장한 연속 녹화 파일) 내
+    위치로 변환하는 매핑 표를 만든다. IDLE Tier 프레임은 Active Stream에 아예 기록되지 않으므로
+    None을 반환한다.
+
+    Event Clip을 Active Stream에서 재인코딩 없이 오려내려면(FFmpeg Stream Copy), 원본 Frame
+    Index가 아니라 이 Active Stream 내부 위치(그리고 그 위치를 fps로 나눈 시각)가 필요하다.
+    """
+    positions: list[int | None] = []
+    count = 0
+    for tier in tiers:
+        if tier == RecordingTier.IDLE:
+            positions.append(None)
+        else:
+            positions.append(count)
+            count += 1
+    return positions
+
+
+def clip_window_all_active(tiers: list[RecordingTier], start_frame: int, end_frame: int) -> bool:
+    """[start_frame, end_frame] 구간이 전부 Active Stream에 존재하는(=IDLE이 아닌) 프레임인지 확인한다.
+
+    False라면 Pre-Roll 또는 Post-Roll이 IDLE Tier 구간까지 파고들었다는 뜻이다 — 이 경우
+    Active Stream을 Stream Copy로 오려내는 것만으로는 Event Clip을 완전하게 만들 수 없다
+    (IDLE 구간 원본 프레임은 Active Stream에 아예 기록되지 않았기 때문). Circular Buffer로
+    원본 고화질 프레임을 따로 보관하거나, 그 구간만 재인코딩하는 Fallback이 필요하다.
+    """
+    return all(tiers[i] != RecordingTier.IDLE for i in range(start_frame, end_frame + 1))
