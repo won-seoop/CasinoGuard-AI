@@ -1,0 +1,93 @@
+{
+  "n_frames": 1600,
+  "assumed_fps": 25.0,
+  "frame_w": 810,
+  "frame_h": 1080,
+  "frame_nbytes": 2624400,
+  "pre_roll_frames": 250,
+  "clip_plan": {
+    "start_frame": 1089,
+    "end_frame": 1599,
+    "n_frames": 511
+  },
+  "idle_prefix_frames_needed": 112,
+  "trigger_frame": 1339,
+  "required_capacity_exact_minimum": 251,
+  "required_capacity_production_with_margin": 301,
+  "scenarios": {
+    "undersized_edge_budget": {
+      "capacity_frames": 64,
+      "memory_bytes": 167961600,
+      "memory_mb": 160.18,
+      "push_cpu_time_sec": 3.9559979999999975,
+      "push_wall_time_sec": 4.015441843999952,
+      "coverage_complete": false,
+      "missing_frame_count": 112,
+      "missing_frames_sample": [
+        1089,
+        1090,
+        1091,
+        1092,
+        1093
+      ],
+      "clip_build": null,
+      "outcome": "버퍼가 112개 프레임을 이미 evict함 — get_range()가 KeyError를 던져 Hybrid 조립을 명시적으로 중단시킨다 (EXP-019 Naive Stream Copy처럼 조용히 불완전한 파일을 만들지 않음).",
+      "get_range_error": "'buffer missing 112 frame(s) in [1089,1200]: (1089, 1090, 1091, 1092, 1093)...'"
+    },
+    "off_by_one_naive": {
+      "capacity_frames": 250,
+      "memory_bytes": 656100000,
+      "memory_mb": 625.71,
+      "push_cpu_time_sec": 4.0872530000000005,
+      "push_wall_time_sec": 4.116785022000045,
+      "coverage_complete": false,
+      "missing_frame_count": 1,
+      "missing_frames_sample": [
+        1089
+      ],
+      "clip_build": null,
+      "outcome": "버퍼가 1개 프레임을 이미 evict함 — get_range()가 KeyError를 던져 Hybrid 조립을 명시적으로 중단시킨다 (EXP-019 Naive Stream Copy처럼 조용히 불완전한 파일을 만들지 않음).",
+      "get_range_error": "'buffer missing 1 frame(s) in [1089,1200]: (1089,)'"
+    },
+    "exact_minimum": {
+      "capacity_frames": 251,
+      "memory_bytes": 658724400,
+      "memory_mb": 628.21,
+      "push_cpu_time_sec": 4.247828999999999,
+      "push_wall_time_sec": 4.2955922490000376,
+      "coverage_complete": true,
+      "missing_frame_count": 0,
+      "missing_frames_sample": [],
+      "clip_build": {
+        "idle_part_encode_cpu_sec": 0.19769199999999998,
+        "concat_cpu_sec": 0.00037499999999823785,
+        "total_clip_cpu_sec": 0.19806699999999822,
+        "file_size_bytes": 5763825,
+        "expected_frames": 511,
+        "actual_frames": 511,
+        "frame_diff": 0,
+        "is_complete_clip": true
+      }
+    },
+    "production_with_margin": {
+      "capacity_frames": 301,
+      "memory_bytes": 789944400,
+      "memory_mb": 753.35,
+      "push_cpu_time_sec": 4.434790000000007,
+      "push_wall_time_sec": 4.471692313000062,
+      "coverage_complete": true,
+      "missing_frame_count": 0,
+      "missing_frames_sample": [],
+      "clip_build": {
+        "idle_part_encode_cpu_sec": 0.12893600000001015,
+        "concat_cpu_sec": 0.0003260000000011587,
+        "total_clip_cpu_sec": 0.1292620000000113,
+        "file_size_bytes": 5763825,
+        "expected_frames": 511,
+        "actual_frames": 511,
+        "frame_diff": 0,
+        "is_complete_clip": true
+      }
+    }
+  }
+}

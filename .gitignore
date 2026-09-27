@@ -1,4 +1,5 @@
 .venv/
+.venv310/
 __pycache__/
 *.pyc
 .DS_Store
@@ -12,6 +13,7 @@ results/videos/
 results/EXP-001/*.mp4
 results/EXP-017/videos/
 results/EXP-019/videos/
+results/EXP-020/videos/
 *.pt
 *.onnx
 
