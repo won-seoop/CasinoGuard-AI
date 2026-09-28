@@ -78,8 +78,20 @@ class FrameCircularBuffer(Generic[FrameT]):
         return [self._frames[i] for i in range(start_frame, end_frame + 1)]
 
     def memory_bytes(self, frame_nbytes: int) -> int:
-        """현재 버퍼가 실제로 들고 있는 프레임 수 기준 메모리 사용량 추정치."""
+        """현재 버퍼가 실제로 들고 있는 프레임 수 기준 메모리 사용량 추정치.
+
+        모든 프레임 크기가 균일하다고 가정한다(원본 raw ndarray처럼 고정 크기일 때만 정확).
+        """
         return len(self._frames) * frame_nbytes
+
+    def total_bytes(self, size_fn) -> int:
+        """보관 중인 각 프레임의 실제 크기를 개별적으로 계산해 합산한다.
+
+        `memory_bytes()`는 프레임 크기가 균일하다고 가정하지만(FC-009 이전의 raw ndarray
+        버퍼), JPEG처럼 압축된 프레임은 내용에 따라 크기가 저마다 달라 그 가정이 깨진다.
+        `size_fn`은 보관된 프레임 한 개를 받아 바이트 수를 반환하는 함수다(예: `len`).
+        """
+        return sum(size_fn(f) for f in self._frames.values())
 
 
 def required_capacity_for_pre_roll(pre_roll_frames: int, safety_margin_frames: int = 0) -> int:

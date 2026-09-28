@@ -72,6 +72,22 @@ def test_memory_bytes_scales_with_frames_actually_held():
     assert buf.memory_bytes(frame_nbytes=1000) == 4000
 
 
+def test_total_bytes_sums_variable_size_frames_individually():
+    buf = FrameCircularBuffer(capacity_frames=4)
+    buf.push(0, b"a")
+    buf.push(1, b"bbb")
+    buf.push(2, b"cc")
+    assert buf.total_bytes(len) == 1 + 3 + 2
+
+
+def test_total_bytes_reflects_eviction_beyond_capacity():
+    buf = FrameCircularBuffer(capacity_frames=2)
+    buf.push(0, b"aaaaa")  # evicted once frame 2 is pushed
+    buf.push(1, b"bb")
+    buf.push(2, b"c")
+    assert buf.total_bytes(len) == 2 + 1
+
+
 def test_required_capacity_for_pre_roll_is_off_by_one_aware():
     # 트리거 프레임 자신 포함 pre_roll_frames+1 프레임이 필요하다
     assert required_capacity_for_pre_roll(pre_roll_frames=250) == 251

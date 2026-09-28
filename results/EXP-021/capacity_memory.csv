@@ -1,0 +1,5 @@
+scenario,capacity,raw_memory_bytes,q30_total_bytes,q30_complete,q30_missing_count,q50_total_bytes,q50_complete,q50_missing_count,q70_total_bytes,q70_complete,q70_missing_count,q85_total_bytes,q85_complete,q85_missing_count,q95_total_bytes,q95_complete,q95_missing_count
+undersized_edge_budget,64,167961600,6790037,False,187,9177271,False,187,12213737,False,187,17300891,False,187,29113515,False,187
+off_by_one_naive,250,656100000,23888270,False,1,32352493,False,1,43307917,False,1,61492372,False,1,104113936,False,1
+exact_minimum,251,658724400,23969447,True,0,32464541,True,0,43460368,True,0,61712614,True,0,104493832,True,0
+production_with_margin,301,789944400,28079814,True,0,38066856,True,0,51010050,True,0,72474252,True,0,122883173,True,0
