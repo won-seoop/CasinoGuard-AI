@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from recording.adaptive import RecordingTier, TierQualityConfig
 from recording.circular_buffer import FrameCircularBuffer
 from recording.frame_codec import decode_frame, encode_frame
 
@@ -66,3 +67,29 @@ def test_circular_buffer_of_encoded_bytes_roundtrips_through_get_range():
     for original, back in zip(frames, recovered):
         assert back.shape == original.shape
         assert np.abs(original.astype(np.int16) - back.astype(np.int16)).mean() < 5.0
+
+
+def test_circular_buffer_with_tier_differentiated_quality_keeps_event_frame_fidelity():
+    """EXP-022: IDLE Tier는 낮은 quality로, EVENT Tier는 높은 quality로 같은 버퍼에 섞어
+    넣어도(quality_for_tier), 완전성(coverage)과는 무관하게 EVENT 프레임의 화질이 IDLE
+    프레임보다 항상 원본에 더 가깝게 복원되어야 한다 — Tier 차등의 핵심 목적이 실제로
+    지켜지는지 회귀로 고정한다."""
+    tq = TierQualityConfig(idle_quality=20, normal_quality=70, event_quality=95)
+    tiers = [RecordingTier.IDLE, RecordingTier.IDLE, RecordingTier.NORMAL, RecordingTier.EVENT]
+    base = _gradient_frame(h=48, w=48)
+    frames = [np.roll(base, shift=i * 3, axis=1) for i in range(len(tiers))]
+
+    buf: FrameCircularBuffer[bytes] = FrameCircularBuffer(capacity_frames=4)
+    for i, (frame, tier) in enumerate(zip(frames, tiers)):
+        buf.push(i, encode_frame(frame, quality=tq.quality_for_tier(tier)))
+
+    cov = buf.coverage(0, 3)
+    assert cov.is_complete
+    decoded = [decode_frame(b) for b in buf.get_range(0, 3)]
+
+    def mae(a, b):
+        return float(np.abs(a.astype(np.int16) - b.astype(np.int16)).mean())
+
+    idle_mae = mae(frames[0], decoded[0])
+    event_mae = mae(frames[3], decoded[3])
+    assert event_mae < idle_mae

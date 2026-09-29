@@ -1,0 +1,123 @@
+{
+  "trigger_frame": 1339,
+  "window": [
+    1089,
+    1339
+  ],
+  "window_composition": {
+    "idle": 112,
+    "normal": 138,
+    "event": 1
+  },
+  "tier_distribution_total_frames": {
+    "idle": 1201,
+    "normal": 138,
+    "event": 261
+  },
+  "capacity": 301,
+  "raw_uncompressed_memory_mb_at_capacity301": 789.9444,
+  "scenarios": [
+    {
+      "scenario": "baseline_uniform85",
+      "idle_quality": 85,
+      "normal_quality": 85,
+      "event_quality": 85,
+      "full_run_avg_bytes_per_frame": 228888.76625,
+      "full_run_avg_MB_at_capacity301": 68.89551864124999,
+      "buf_MB_idle_steady_state": 65.040854,
+      "buf_MB_normal_steady_state": 70.245704,
+      "buf_MB_at_trigger": 72.474252,
+      "clip_idle_segment_mae": 2.286119075516581,
+      "clip_normal_segment_mae": 2.8699616226980242,
+      "clip_event_segment_mae": 2.585968983386679,
+      "clip_overall_mae": 2.6083107943170165,
+      "memory_saving_vs_baseline_pct": 0.0,
+      "clip_overall_mae_delta_vs_baseline": 0.0
+    },
+    {
+      "scenario": "alt_a_uniform50",
+      "idle_quality": 50,
+      "normal_quality": 50,
+      "event_quality": 50,
+      "full_run_avg_bytes_per_frame": 119374.0875,
+      "full_run_avg_MB_at_capacity301": 35.9316003375,
+      "buf_MB_idle_steady_state": 33.717554,
+      "buf_MB_normal_steady_state": 36.809198,
+      "buf_MB_at_trigger": 38.066856,
+      "clip_idle_segment_mae": 4.318675057700263,
+      "clip_normal_segment_mae": 5.498236565873442,
+      "clip_event_segment_mae": 5.3950510592897425,
+      "clip_overall_mae": 4.971487265387467,
+      "memory_saving_vs_baseline_pct": 47.47533786205893,
+      "clip_overall_mae_delta_vs_baseline": 2.363176471070451
+    },
+    {
+      "scenario": "tier_diff_idle30",
+      "idle_quality": 30,
+      "normal_quality": 75,
+      "event_quality": 95,
+      "full_run_avg_bytes_per_frame": 152605.965625,
+      "full_run_avg_MB_at_capacity301": 45.934395653125,
+      "buf_MB_idle_steady_state": 24.6819,
+      "buf_MB_normal_steady_state": 37.189894,
+      "buf_MB_at_trigger": 42.451222,
+      "clip_idle_segment_mae": 5.774214174124154,
+      "clip_normal_segment_mae": 3.8337609949216827,
+      "clip_event_segment_mae": 1.3366468526139308,
+      "clip_overall_mae": 4.689671918939089,
+      "memory_saving_vs_baseline_pct": 41.42578801641168,
+      "clip_overall_mae_delta_vs_baseline": 2.0813611246220725
+    },
+    {
+      "scenario": "tier_diff_idle50",
+      "idle_quality": 50,
+      "normal_quality": 75,
+      "event_quality": 95,
+      "full_run_avg_bytes_per_frame": 175156.8175,
+      "full_run_avg_MB_at_capacity301": 52.7222020675,
+      "buf_MB_idle_steady_state": 33.717554,
+      "buf_MB_normal_steady_state": 43.224436,
+      "buf_MB_at_trigger": 47.30553,
+      "clip_idle_segment_mae": 4.318675057700263,
+      "clip_normal_segment_mae": 3.8337609949216827,
+      "clip_event_segment_mae": 1.3366468526139308,
+      "clip_overall_mae": 4.040188329140381,
+      "memory_saving_vs_baseline_pct": 34.7278120235032,
+      "clip_overall_mae_delta_vs_baseline": 1.4318775348233648
+    },
+    {
+      "scenario": "tier_diff_idle60",
+      "idle_quality": 60,
+      "normal_quality": 75,
+      "event_quality": 95,
+      "full_run_avg_bytes_per_frame": 186631.3175,
+      "full_run_avg_MB_at_capacity301": 56.1760265675,
+      "buf_MB_idle_steady_state": 38.314052,
+      "buf_MB_normal_steady_state": 46.285097,
+      "buf_MB_at_trigger": 49.769914,
+      "clip_idle_segment_mae": 3.960999248807891,
+      "clip_normal_segment_mae": 3.8337609949216827,
+      "clip_event_segment_mae": 1.3366468526139308,
+      "clip_overall_mae": 3.880587968200358,
+      "memory_saving_vs_baseline_pct": 31.32745405913262,
+      "clip_overall_mae_delta_vs_baseline": 1.2722771738833414
+    },
+    {
+      "scenario": "tier_diff_idle70",
+      "idle_quality": 70,
+      "normal_quality": 75,
+      "event_quality": 95,
+      "full_run_avg_bytes_per_frame": 204592.62625,
+      "full_run_avg_MB_at_capacity301": 61.58238050125,
+      "buf_MB_idle_steady_state": 45.516345,
+      "buf_MB_normal_steady_state": 51.117362,
+      "buf_MB_at_trigger": 53.648596,
+      "clip_idle_segment_mae": 3.388612505987763,
+      "clip_normal_segment_mae": 3.8337609949216827,
+      "clip_event_segment_mae": 1.3366468526139308,
+      "clip_overall_mae": 3.6251803379379908,
+      "memory_saving_vs_baseline_pct": 25.975647185706734,
+      "clip_overall_mae_delta_vs_baseline": 1.0168695436209743
+    }
+  ]
+}

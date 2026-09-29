@@ -150,6 +150,32 @@ def total_planned_frames(clips: list[EventClipPlan]) -> int:
     return sum(c.end_frame - c.start_frame + 1 for c in clips)
 
 
+@dataclass(frozen=True)
+class TierQualityConfig:
+    """Circular Buffer(EXP-020/021)에 프레임을 넣기 전 Tier별로 다른 JPEG quality를 고른다.
+
+    EXP-021은 quality를 전체 프레임에 고정값(85)으로만 적용했다 — 이 Config는 그 다음
+    Action(Tier별 quality 차등)을 위한 순수 매핑 로직이다. 기본값(85/85/85)은 EXP-021의
+    Uniform Baseline과 완전히 동일해 하위호환된다(quality_for_tier가 항상 85를 반환).
+    """
+
+    idle_quality: int = 85
+    normal_quality: int = 85
+    event_quality: int = 85
+
+    def __post_init__(self) -> None:
+        for name, q in (("idle_quality", self.idle_quality), ("normal_quality", self.normal_quality), ("event_quality", self.event_quality)):
+            if not (0 <= q <= 100):
+                raise ValueError(f"{name} must be in [0, 100], got {q}")
+
+    def quality_for_tier(self, tier: RecordingTier) -> int:
+        if tier is RecordingTier.IDLE:
+            return self.idle_quality
+        if tier is RecordingTier.NORMAL:
+            return self.normal_quality
+        return self.event_quality
+
+
 def active_stream_positions(tiers: list[RecordingTier]) -> list[int | None]:
     """원본 Frame Index -> Active Stream(IDLE이 아닌 프레임만 순서대로 저장한 연속 녹화 파일) 내
     위치로 변환하는 매핑 표를 만든다. IDLE Tier 프레임은 Active Stream에 아예 기록되지 않으므로

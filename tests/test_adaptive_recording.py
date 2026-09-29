@@ -8,6 +8,7 @@ import pytest  # noqa: E402
 from recording.adaptive import (  # noqa: E402
     EventInterval,
     RecordingTier,
+    TierQualityConfig,
     active_stream_positions,
     clip_window_all_active,
     compute_tier_sequence,
@@ -189,3 +190,24 @@ def test_clip_window_all_active_false_when_preroll_dips_into_idle():
     tiers = [RecordingTier.IDLE, RecordingTier.IDLE, RecordingTier.NORMAL, RecordingTier.EVENT]
     assert clip_window_all_active(tiers, 0, 3) is False
     assert clip_window_all_active(tiers, 2, 3) is True
+
+
+def test_tier_quality_config_default_is_uniform_85_backward_compatible():
+    # EXP-021 Uniform Baseline(quality=85 고정)과 동일해야 한다.
+    cfg = TierQualityConfig()
+    assert cfg.quality_for_tier(RecordingTier.IDLE) == 85
+    assert cfg.quality_for_tier(RecordingTier.NORMAL) == 85
+    assert cfg.quality_for_tier(RecordingTier.EVENT) == 85
+
+
+def test_tier_quality_config_differentiates_by_tier():
+    cfg = TierQualityConfig(idle_quality=50, normal_quality=75, event_quality=95)
+    assert cfg.quality_for_tier(RecordingTier.IDLE) == 50
+    assert cfg.quality_for_tier(RecordingTier.NORMAL) == 75
+    assert cfg.quality_for_tier(RecordingTier.EVENT) == 95
+
+
+@pytest.mark.parametrize("bad_kwargs", [{"idle_quality": -1}, {"normal_quality": 101}, {"event_quality": 200}])
+def test_tier_quality_config_rejects_out_of_range_quality(bad_kwargs):
+    with pytest.raises(ValueError):
+        TierQualityConfig(**bad_kwargs)
