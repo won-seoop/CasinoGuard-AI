@@ -176,6 +176,34 @@ class TierQualityConfig:
         return self.event_quality
 
 
+class OnlineTierClassifier:
+    """`compute_tier_sequence`와 동일한 규칙을 프레임 단위로 실시간(Streaming) 계산한다.
+
+    EXP-017~022는 전체 person_present/event_active 배열을 먼저 다 모은 뒤
+    `compute_tier_sequence()`로 한 번에 계산했다 — Two-Pass 방식이라 실제 카메라처럼
+    "미래 프레임을 아직 모르는" 상황을 재현하지 못한다. 이 클래스는 매 프레임 들어오는
+    값만으로 상태(`last_event_frame`)를 유지해 동일한 판정을 온라인으로 재현한다
+    (EXP-023: run_full_pipeline 통합에서 실제 Live 루프에 이 방식이 필요했다).
+    """
+
+    def __init__(self, post_roll_frames: int):
+        if post_roll_frames < 0:
+            raise ValueError("post_roll_frames는 음수일 수 없다")
+        self.post_roll_frames = post_roll_frames
+        self._frame_idx = -1
+        self._last_event_frame = -(post_roll_frames + 1)
+
+    def update(self, person_present: bool, event_active: bool) -> RecordingTier:
+        self._frame_idx += 1
+        if event_active:
+            self._last_event_frame = self._frame_idx
+        if self._frame_idx - self._last_event_frame <= self.post_roll_frames:
+            return RecordingTier.EVENT
+        if person_present:
+            return RecordingTier.NORMAL
+        return RecordingTier.IDLE
+
+
 def active_stream_positions(tiers: list[RecordingTier]) -> list[int | None]:
     """원본 Frame Index -> Active Stream(IDLE이 아닌 프레임만 순서대로 저장한 연속 녹화 파일) 내
     위치로 변환하는 매핑 표를 만든다. IDLE Tier 프레임은 Active Stream에 아예 기록되지 않으므로

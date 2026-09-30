@@ -1,3 +1,4 @@
+import random
 import sys
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest  # noqa: E402
 
 from recording.adaptive import (  # noqa: E402
     EventInterval,
+    OnlineTierClassifier,
     RecordingTier,
     TierQualityConfig,
     active_stream_positions,
@@ -211,3 +213,42 @@ def test_tier_quality_config_differentiates_by_tier():
 def test_tier_quality_config_rejects_out_of_range_quality(bad_kwargs):
     with pytest.raises(ValueError):
         TierQualityConfig(**bad_kwargs)
+
+
+def test_online_tier_classifier_rejects_negative_post_roll():
+    with pytest.raises(ValueError):
+        OnlineTierClassifier(post_roll_frames=-1)
+
+
+@pytest.mark.parametrize(
+    "person_present,event_active,post_roll_frames",
+    [
+        ([False, False], [False, False], 5),
+        ([True, True], [False, False], 5),
+        ([True, True], [False, True], 5),
+        ([True, True, True, True, False], [True, False, False, False, False], 2),
+        ([True] * 8, [True, False, False, True, False, False, False, False], 3),
+    ],
+)
+def test_online_tier_classifier_matches_offline_compute_tier_sequence(person_present, event_active, post_roll_frames):
+    # EXP-023: run_full_pipeline 통합은 미래 프레임을 모르는 실시간 루프에서 Tier를
+    # 매기므로 Two-Pass인 compute_tier_sequence를 직접 쓸 수 없다. OnlineTierClassifier가
+    # 기존에 검증된 compute_tier_sequence와 프레임별로 완전히 같은 결과를 내야만
+    # EXP-017~022에서 쌓은 Tier 정의(EVENT 유지 규칙 등)가 그대로 보존된다.
+    offline = compute_tier_sequence(person_present, event_active, post_roll_frames)
+    clf = OnlineTierClassifier(post_roll_frames=post_roll_frames)
+    online = [clf.update(p, e) for p, e in zip(person_present, event_active)]
+    assert online == offline
+
+
+def test_online_tier_classifier_matches_offline_on_random_sequences():
+    rng = random.Random(42)
+    for _ in range(20):
+        n = rng.randint(1, 60)
+        person_present = [rng.random() < 0.5 for _ in range(n)]
+        event_active = [rng.random() < 0.15 for _ in range(n)]
+        post_roll_frames = rng.randint(0, 10)
+        offline = compute_tier_sequence(person_present, event_active, post_roll_frames)
+        clf = OnlineTierClassifier(post_roll_frames=post_roll_frames)
+        online = [clf.update(p, e) for p, e in zip(person_present, event_active)]
+        assert online == offline

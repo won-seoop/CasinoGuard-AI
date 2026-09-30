@@ -1,0 +1,89 @@
+{
+  "n_frames": 900,
+  "assumed_fps": 25.0,
+  "frame_w": 810,
+  "frame_h": 1080,
+  "config": {
+    "pre_roll_frames": 250,
+    "post_roll_frames": 250,
+    "buffer_capacity": 271,
+    "tier_quality": {
+      "idle": 50,
+      "normal": 75,
+      "event": 95
+    }
+  },
+  "tier_distribution": {
+    "idle": 301,
+    "normal": 338,
+    "event": 261
+  },
+  "buffer_memory_mb": {
+    "idle_steady_state": 30.365,
+    "normal_steady_state": 55.224
+  },
+  "wall_clock_sec": 83.54,
+  "effective_fps_incl_all_stages": 10.77,
+  "latency_ms": {
+    "detect_tracking": {
+      "p50_ms": 54.575,
+      "p95_ms": 72.381,
+      "p99_ms": 81.112,
+      "mean_ms": 58.008
+    },
+    "events_bestshot_metadata": {
+      "p50_ms": 9.585,
+      "p95_ms": 14.799,
+      "p99_ms": 17.773,
+      "mean_ms": 7.571
+    },
+    "adaptive_recording_buffer": {
+      "p50_ms": 3.817,
+      "p95_ms": 5.483,
+      "p99_ms": 6.546,
+      "mean_ms": 5.513
+    },
+    "total": {
+      "p50_ms": 66.472,
+      "p95_ms": 88.513,
+      "p99_ms": 98.993,
+      "mean_ms": 71.093
+    }
+  },
+  "metadata": {
+    "tracks": 10,
+    "events": 8,
+    "intrusion_enter_events": 4
+  },
+  "event_clips": [
+    {
+      "clip_id": 1,
+      "start_frame": 389,
+      "end_frame": 899,
+      "expected_frames": 511,
+      "actual_frames_written": 511,
+      "frames_missing": 0,
+      "merged_event_count": 4,
+      "event_ids": [
+        1,
+        2,
+        5,
+        6
+      ],
+      "file_size_bytes": 27033338,
+      "path": "results/EXP-023/event_clips/event_clip_1.mp4",
+      "truncated_at_video_end": true,
+      "alternative_a_extract_at_run_end": {
+        "would_be_complete": false,
+        "missing_frame_count": 240,
+        "missing_frames_sample": [
+          389,
+          390,
+          391,
+          392,
+          393
+        ]
+      }
+    }
+  ]
+}

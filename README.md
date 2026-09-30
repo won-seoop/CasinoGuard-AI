@@ -102,6 +102,19 @@ Failure Case로 기록하고 중앙 대역 ROI로 재설계해 해결했다.
 
 지침 21/22의 Baseline을 구현했다. Heatmap은 Detection Center 누적(Baseline)과 Track이 `min_track_len` 이상 관측된 뒤에만 누적하는 Track-Gated 누적(대안)을 함께 제공한다(이번 bus.jpg+Pan 12px 실측에서는 노이즈 제거 효과가 0.11%로 미미했음을 정직하게 기록). Crowd Analysis는 "그럴듯한" 고정 Threshold(한 셀에 4~5명=Crowded)를 실측 분포에 적용하자 900프레임 내내 Crowded 등급이 한 번도 발동하지 않는 문제를 발견했고, 실측 Percentile(p50/p90) 기반 Threshold로 바꿔 전체의 7.9%(859/10,800)를 정확히 Crowded로 분리했다(`PAR-007`).
 
+### Adaptive Recording/Circular Buffer 실시간 파이프라인 통합 (Stretch, EXP-023, **PAR-014**)
+
+EXP-017~022는 전부 Adaptive Recording/Circular Buffer를 독립된 스크립트로만 검증했다 — 실제
+Detection+Tracking+BestShot+Metadata를 SQLite에 쌓는 파이프라인과는 한 번도 같은 루프에서
+동작한 적이 없었다. 이번에 `OnlineTierClassifier`(신규, Two-Pass `compute_tier_sequence`를
+프레임 단위 스트리밍으로 재현)로 실시간 단일 패스 통합을 구현해, Circular Buffer가 이미
+실시간인 전체 파이프라인에 추가하는 오버헤드가 P50 기준 5.7%(3.8ms/66.5ms)에 불과함을
+확인했다. 더 중요하게는, Pre-Roll을 "EVENT 구간이 끝난 뒤" 꺼내는 더 단순한 설계(대안 A)가
+이 프로젝트의 실제 시나리오(Post-Roll 간격보다 가까운 반복 Intrusion으로 EVENT Tier가
+261프레임 연속됨)에서 Pre-Roll의 47%(240/511프레임)를 잃어버린다는 것을 구현 전 실측으로
+발견하고, "트리거 순간 즉시 추출"하는 방식(대안 B)을 채택해 511/511 완전한 Event Clip을
+만들었다(`PAR-014`).
+
 ## 10. Metadata Pipeline (EXP-008)
 
 Track(trajectory, dwell_time, bestshot_path 등) + Event(Intrusion/LineCrossing/Loitering)를 SQLite 스키마로 통합 저장. 164 Track, 115 BestShot, 190 Event.
@@ -132,11 +145,14 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 |---|---|---|
 | FC-001 | 손상된 mp4는 OpenCV가 아예 못 엶(moov atom) | 예외 없이 안전 처리 완료 |
 | FC-002 | 배경 밀집 군중 Detection 실패 | Wikimedia 영상 접근 복구되는 다음 세션으로 이월 |
-| FC-003 | BestShot Position Score 경계 페널티 부정확 | 개선 백로그 |
+| FC-003 | BestShot Position Score 경계 페널티 부정확 | **PAR-009로 수정 완료** |
 | FC-004 | Track 소실 시 EXIT 유실 | **PAR-002로 수정 완료** |
 | FC-005 | BestShot 후보 무제한 누적 Memory Leak | **PAR-004로 수정 완료** |
 | FC-006 | Track 체류시간(dwell_frames)이 전부 0으로 저장됨 | **PAR-006로 수정 완료** |
 | FC-007 | 선 근처 박스 흔들림으로 Line Crossing 왕복 중복 이벤트 | **PAR-005로 수정 완료** |
+| FC-008 | Adaptive Recording Event Clip Pre-Roll이 IDLE Tier까지 파고들면 Naive Stream Copy가 조용히 불완전한 Clip을 만듦 | **PAR-010로 수정 완료** |
+| FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
+| FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 
 ## 14. 주요 기술 의사결정
 
@@ -155,6 +171,12 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-006**: Track 체류시간(dwell_frames)이 항상 0으로 저장되는 문제(FC-006) → 호출 순서 교정만으로는 실제 케이스의 2/3가 여전히 실패함을 실측으로 확인하고, Loitering의 연속-스트릭 상태와 분리된 DwellCounter로 근본 수정 (통제된 시나리오 3종 모두 Ground Truth와 일치, 실제 YOLO+ByteTrack 실행에서 dwell>0 Track 비율 0%→83.3%)
 - **PAR-007**: Crowd Analysis 고정 Threshold가 실측 분포와 어긋나 Crowded 등급이 전혀 발동하지 않는 문제(Degenerate Classification) → Percentile 기반 Threshold 도출로 개선 (Crowded 분류 비율 0.0%→7.9%, 859/10,800건)
 - **PAR-008**: Adaptive Recording Event Clip을 Event마다 독립적으로 저장하면(대안 A) 간격이 짧은 두 Event의 Window가 겹쳐 중복 저장되는 문제 → 겹치거나 인접한 Window를 병합하는 방식(대안 B)으로 개선 (중복 361프레임(41.4%) → 0, 연속 녹화 저장량 18.7% 절감)
+- **PAR-009**: BestShot Position Score의 margin_ratio 근접 판정이 실제 경계 접촉과 달라 부정확한 문제(FC-003) → boundary_eps(2px) 실제 접촉 판정으로 교체 (근접-비잘림 구간 False Positive Rate 91.7%→25.0%)
+- **PAR-010**: Adaptive Recording Event Clip 재인코딩 낭비 → FFmpeg Stream Copy Hybrid로 개선하는 과정에서 Naive Stream Copy가 IDLE Tier와 겹치는 Pre-Roll을 조용히 누락시키는 문제(FC-008)를 발견해 IDLE 겹침 구간만 재인코딩하도록 수정 (완전성 유지, Clip 생성 CPU 시간 74.6~85.6% 절감)
+- **PAR-011**: 지침 23 Circular Buffer를 실제 구현하는 과정에서 버퍼 용량=Pre-Roll 길이로 설정하면 트리거 프레임 자신이 evict되어 정확히 1프레임이 모자라는 Off-by-One 발견 → `required_capacity_for_pre_roll()`(pre_roll+1+안전마진)로 수정
+- **PAR-012**: Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB가 필요한 문제(FC-009) → push/pop 경계에서 JPEG 인코딩/디코딩을 추가해 메모리 90.8% 절감(789.94MB→72.47MB), Event Clip 완전성과 화질(MAE 2.61/255) 유지
+- **PAR-013**: Circular Buffer quality를 Uniform하게 낮추면(대안 A) 실제 사고(EVENT) 프레임 화질을 가장 많이 희생시키는 문제 발견(EVENT MAE 2.59→5.40) → EVENT quality만 보존하는 Tier 차등 방식(대안 B)으로 EVENT MAE를 Baseline보다 개선(1.34)하면서 IDLE 메모리 41.1% 추가 절감
+- **PAR-014**: Adaptive Recording/Circular Buffer를 실시간 Detection+Tracking+Metadata 파이프라인에 처음 통합하며, Pre-Roll을 EVENT 종료 후 꺼내는 방식(대안 A)이 실제 시나리오에서 47%(240/511프레임) 손실됨을 구현 전 실측 발견 → 트리거 순간 즉시 추출하는 방식(대안 B)으로 511/511 완전성 확보, Circular Buffer 통합 오버헤드는 전체 파이프라인의 P50 5.7%로 측정
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -215,6 +237,12 @@ python scripts/run_exp014_line_crossing_hysteresis.py           # FC-007 재현 
 python scripts/run_exp015_dwell_time_fix.py                     # FC-006 재현 + DwellCounter 수정 검증 (PAR-006)
 python scripts/run_exp016_heatmap_crowd.py                      # Heatmap Detection Center vs Track-Gated, Crowd Threshold 비교 (PAR-007)
 python scripts/run_exp017_adaptive_recording.py                 # Adaptive Recording Baseline vs 개선, Event Clip 병합 A/B (PAR-008)
+python scripts/run_exp018_bestshot_position_score_fix.py        # FC-003 재현 + boundary_eps 수정 검증 (PAR-009)
+python scripts/run_exp019_event_clip_copy.py                    # FC-008 재현 + FFmpeg Stream Copy Hybrid (PAR-010)
+python scripts/run_exp020_circular_buffer.py                    # Circular Buffer Off-by-One 발견/수정 (PAR-011)
+python scripts/run_exp021_compressed_circular_buffer.py         # FC-009 재현 + JPEG 압축 버퍼링 (PAR-012)
+python scripts/run_exp022_tier_quality_circular_buffer.py       # Circular Buffer Tier별 quality 차등 (PAR-013)
+python scripts/run_exp023_pipeline_integration.py               # Adaptive Recording+Circular Buffer 실시간 파이프라인 통합, Pre-Roll 추출 시점 A/B (PAR-014)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py

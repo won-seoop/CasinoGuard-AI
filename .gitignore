@@ -16,6 +16,8 @@ results/EXP-017/videos/
 results/EXP-019/videos/
 results/EXP-020/videos/
 results/EXP-021/videos/
+results/EXP-023/event_clips/
+results/EXP-023/metadata.db
 *.pt
 *.onnx
 

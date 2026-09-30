@@ -80,11 +80,27 @@ class MetadataStore:
         self.conn.execute("UPDATE tracks SET bestshot_path=?, bestshot_score=? WHERE track_id=?", (path, score, track_id))
         self.conn.commit()
 
-    def add_event(self, track_id: int, event_type: str, frame_idx: int, detail: dict | None = None) -> None:
-        self.conn.execute(
+    def add_event(self, track_id: int, event_type: str, frame_idx: int, detail: dict | None = None) -> int:
+        cur = self.conn.execute(
             "INSERT INTO events(track_id, event_type, frame_idx, detail) VALUES (?,?,?,?)",
             (track_id, event_type, frame_idx, json.dumps(detail or {})),
         )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def update_event_detail(self, event_id: int, extra: dict) -> None:
+        """이미 저장된 Event의 detail JSON에 필드를 병합한다 (덮어쓰지 않고 merge).
+
+        EXP-023: Adaptive Recording Event Clip은 Post-Roll이 끝나야 파일이 완성되므로
+        clip 경로를 이벤트가 처음 기록될 때는 아직 알 수 없다 — 나중에 이 메서드로 붙인다.
+        """
+        cur = self.conn.execute("SELECT detail FROM events WHERE event_id=?", (event_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise KeyError(f"event_id {event_id} not found")
+        detail = json.loads(row[0]) if row[0] else {}
+        detail.update(extra)
+        self.conn.execute("UPDATE events SET detail=? WHERE event_id=?", (json.dumps(detail), event_id))
         self.conn.commit()
 
     def set_dwell(self, track_id: int, dwell_frames: int) -> None:

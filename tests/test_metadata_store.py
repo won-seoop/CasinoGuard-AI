@@ -3,6 +3,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import pytest  # noqa: E402
+
 from metadata.store import MetadataStore  # noqa: E402
 
 
@@ -56,3 +58,28 @@ def test_update_bestshot_sets_path_and_score():
     store.update_bestshot(1, "results/bestshot/track_1.jpg", 4.2)
     rows = store.query_tracks()
     assert rows[0]["bestshot_path"] == "results/bestshot/track_1.jpg"
+
+
+def test_add_event_returns_event_id():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone="INSIDE")
+    event_id = store.add_event(1, "INTRUSION_ENTER", frame_idx=3, detail={"zone": "vault"})
+    assert isinstance(event_id, int)
+    events = store.query_events()
+    assert events[0]["event_id"] == event_id
+
+
+def test_update_event_detail_merges_without_overwriting_existing_keys():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone="INSIDE")
+    event_id = store.add_event(1, "INTRUSION_ENTER", frame_idx=3, detail={"zone": "vault"})
+    store.update_event_detail(event_id, {"event_clip_path": "results/EXP-023/clip_0.mp4"})
+    events = store.query_events()
+    assert events[0]["detail"]["zone"] == "vault"
+    assert events[0]["detail"]["event_clip_path"] == "results/EXP-023/clip_0.mp4"
+
+
+def test_update_event_detail_raises_for_unknown_event_id():
+    store = make_store()
+    with pytest.raises(KeyError):
+        store.update_event_detail(999, {"event_clip_path": "x.mp4"})

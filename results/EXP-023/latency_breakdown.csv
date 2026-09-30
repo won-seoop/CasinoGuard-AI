@@ -1,0 +1,5 @@
+stage,p50_ms,p95_ms,p99_ms,mean_ms
+detect_tracking,54.575,72.381,81.112,58.008
+events_bestshot_metadata,9.585,14.799,17.773,7.571
+adaptive_recording_buffer,3.817,5.483,6.546,5.513
+total,66.472,88.513,98.993,71.093
