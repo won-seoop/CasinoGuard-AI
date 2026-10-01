@@ -120,7 +120,15 @@ class MetadataStore:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
-    def query_events(self, event_type: str | None = None, track_id: int | None = None) -> list[dict]:
+    def query_events(
+        self,
+        event_type: str | None = None,
+        track_id: int | None = None,
+        has_clip: bool | None = None,
+    ) -> list[dict]:
+        """지침 17: Event 검색. `event_clip_path`는 detail JSON 안에 있지만(EXP-023,
+        update_event_detail로 사후 부착), VMS가 "Event 전후 영상" 위치를 바로 쓸 수 있도록
+        최상위 필드로도 펼쳐서 반환한다(EXP-024)."""
         sql = "SELECT event_id, track_id, event_type, frame_idx, detail FROM events WHERE 1=1"
         params: list = []
         if event_type is not None:
@@ -135,6 +143,9 @@ class MetadataStore:
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         for r in rows:
             r["detail"] = json.loads(r["detail"]) if r["detail"] else {}
+            r["event_clip_path"] = r["detail"].get("event_clip_path")
+        if has_clip is not None:
+            rows = [r for r in rows if (r["event_clip_path"] is not None) == has_clip]
         return rows
 
     def close(self) -> None:

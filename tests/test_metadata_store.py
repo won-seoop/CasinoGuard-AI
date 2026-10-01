@@ -83,3 +83,35 @@ def test_update_event_detail_raises_for_unknown_event_id():
     store = make_store()
     with pytest.raises(KeyError):
         store.update_event_detail(999, {"event_clip_path": "x.mp4"})
+
+
+def test_query_events_exposes_event_clip_path_as_top_level_field():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone="INSIDE")
+    event_id = store.add_event(1, "INTRUSION_ENTER", frame_idx=3, detail={"zone": "vault"})
+    store.update_event_detail(event_id, {"event_clip_path": "results/EXP-023/event_clips/event_clip_1.mp4"})
+    events = store.query_events()
+    assert events[0]["event_clip_path"] == "results/EXP-023/event_clips/event_clip_1.mp4"
+
+
+def test_query_events_event_clip_path_is_none_when_not_set():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone="INSIDE")
+    store.add_event(1, "LOITERING", frame_idx=3, detail={"dwell_sec": 12.5})
+    events = store.query_events()
+    assert events[0]["event_clip_path"] is None
+
+
+def test_query_events_has_clip_filter_true_returns_only_events_with_clip():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone="INSIDE")
+    with_clip_id = store.add_event(1, "INTRUSION_ENTER", frame_idx=3, detail={})
+    store.update_event_detail(with_clip_id, {"event_clip_path": "clip.mp4"})
+    store.add_event(1, "LOITERING", frame_idx=10, detail={})
+
+    with_clip = store.query_events(has_clip=True)
+    without_clip = store.query_events(has_clip=False)
+
+    assert [e["event_id"] for e in with_clip] == [with_clip_id]
+    assert len(without_clip) == 1
+    assert without_clip[0]["event_clip_path"] is None

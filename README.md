@@ -126,8 +126,14 @@ Track(trajectory, dwell_time, bestshot_path 등) + Event(Intrusion/LineCrossing/
 FastAPI로 최소 기능만 구현(Microservice/K8s/복잡한 인증 없음):
 - `GET /tracks?min_dwell_sec=` — 특정 시간 이상 체류한 Track 검색
 - `GET /tracks/{id}` — Track의 이동 기록 + Event 이력
-- `GET /events?event_type=` — 특정 Event 발생 시점 검색
-- `GET /` — 최소 Dashboard (Dwell 상위 5개, 최근 Event 10개)
+- `GET /events?event_type=&has_clip=` — 특정 Event 발생 시점 / Event Clip 유무 검색
+- `GET /events/{id}/clip` — Event 전후 영상(Event Clip) 재생/다운로드 (EXP-024, **PAR-015**)
+- `GET /` — 최소 Dashboard (Dwell 상위 5개, 최근 Event 10개 + Event Clip 링크)
+
+API가 raw SQL로 `events.detail`을 파싱하지 않은 채 그대로 반환해(**FC-011**) `event_clip_path`
+(EXP-023에서 부착)가 사실상 쓸 수 없었고, 영상을 실제로 재생하는 엔드포인트도 없던 문제를
+`MetadataStore.query_events()` 재사용 + `GET /events/{id}/clip`(FileResponse)으로 해결했다
+(`PAR-015`).
 
 ## 12. Performance Benchmark (EXP-008)
 
@@ -153,6 +159,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-008 | Adaptive Recording Event Clip Pre-Roll이 IDLE Tier까지 파고들면 Naive Stream Copy가 조용히 불완전한 Clip을 만듦 | **PAR-010로 수정 완료** |
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
+| FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
 
 ## 14. 주요 기술 의사결정
 
@@ -177,6 +184,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-012**: Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB가 필요한 문제(FC-009) → push/pop 경계에서 JPEG 인코딩/디코딩을 추가해 메모리 90.8% 절감(789.94MB→72.47MB), Event Clip 완전성과 화질(MAE 2.61/255) 유지
 - **PAR-013**: Circular Buffer quality를 Uniform하게 낮추면(대안 A) 실제 사고(EVENT) 프레임 화질을 가장 많이 희생시키는 문제 발견(EVENT MAE 2.59→5.40) → EVENT quality만 보존하는 Tier 차등 방식(대안 B)으로 EVENT MAE를 Baseline보다 개선(1.34)하면서 IDLE 메모리 41.1% 추가 절감
 - **PAR-014**: Adaptive Recording/Circular Buffer를 실시간 Detection+Tracking+Metadata 파이프라인에 처음 통합하며, Pre-Roll을 EVENT 종료 후 꺼내는 방식(대안 A)이 실제 시나리오에서 47%(240/511프레임) 손실됨을 구현 전 실측 발견 → 트리거 순간 즉시 추출하는 방식(대안 B)으로 511/511 완전성 확보, Circular Buffer 통합 오버헤드는 전체 파이프라인의 P50 5.7%로 측정
+- **PAR-015**: VMS Search API가 `MetadataStore`를 거치지 않고 raw SQL로 `event_clip_path`가 담긴 `detail` JSON을 파싱 없이 반환해(FC-011) 영상 재생이 불가능했던 문제 → API가 `MetadataStore.query_events()`를 재사용하도록 바꾸고 `GET /events/{id}/clip`(FileResponse)을 신설해 해결 (실제 EXP-023 산출물로 Event Clip 27,033,338 bytes를 byte-for-byte 서빙 확인, has_clip 필터로 ENTER 4건/EXIT 4건 정확히 분리)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
