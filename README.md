@@ -135,6 +135,22 @@ API가 raw SQL로 `events.detail`을 파싱하지 않은 채 그대로 반환해
 `MetadataStore.query_events()` 재사용 + `GET /events/{id}/clip`(FileResponse)으로 해결했다
 (`PAR-015`).
 
+## 11-1. Attribute Metadata - 상의/하의 색상 분류 (Stretch, EXP-025, **PAR-016**)
+
+지침 19의 Attribute Metadata(상의/하의 색상)를 Baseline(bbox 전체 평균, 상/하 구분 불가)
+→ 대안 A(고정 비율 상/하 분할 + 단순 평균) → 대안 B(상/하 분할 + 그림자/하이라이트/피부색
+필터 + Hue 다수결)로 비교했다. 실제 YOLO11n Person Detection crop 5개(ultralytics 번들
+`zidane.jpg`/`bus.jpg`)에 수동 Ground Truth를 라벨링하고, 조명 변형 4종(저조도/강한조명·
+역광/난색·한색 Cast)으로 안정성을 측정했다.
+
+대안 B 최초 구현이 오히려 Baseline보다 낮은 정확도(16% < 32%)를 내는 역설을 실측으로
+발견 — 원인은 그림자/하이라이트 필터가 저채도인 진짜 검정 옷까지 항상 제외시켜, 클로즈업
+crop에서 소수 피부색 픽셀만 남아 Hue 다수결을 오염시키는 버그였다. 피부색 필터와 "필터
+통과 비율이 낮으면 신뢰하지 않고 원본으로 되돌아가는" 폴백으로 수정해 전체 Accuracy
+32%(Baseline)→40%, 조명 안정성 35%→40%로 개선했다(`PAR-016`). n=5의 작은 평가
+Dataset이라는 한계를 솔직히 명시하며, 아직 MetadataStore/VMS에는 연결하지 않았다
+(검증 Dataset 확장 후 통합 예정, Next Action).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -160,6 +176,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 | FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
+| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨(카메라가 주변 조명 색을 그대로 반영하는 물리적 한계로 추정) | White Balance 보정 필요, 범위 밖(백로그) |
 
 ## 14. 주요 기술 의사결정
 
@@ -185,6 +202,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-013**: Circular Buffer quality를 Uniform하게 낮추면(대안 A) 실제 사고(EVENT) 프레임 화질을 가장 많이 희생시키는 문제 발견(EVENT MAE 2.59→5.40) → EVENT quality만 보존하는 Tier 차등 방식(대안 B)으로 EVENT MAE를 Baseline보다 개선(1.34)하면서 IDLE 메모리 41.1% 추가 절감
 - **PAR-014**: Adaptive Recording/Circular Buffer를 실시간 Detection+Tracking+Metadata 파이프라인에 처음 통합하며, Pre-Roll을 EVENT 종료 후 꺼내는 방식(대안 A)이 실제 시나리오에서 47%(240/511프레임) 손실됨을 구현 전 실측 발견 → 트리거 순간 즉시 추출하는 방식(대안 B)으로 511/511 완전성 확보, Circular Buffer 통합 오버헤드는 전체 파이프라인의 P50 5.7%로 측정
 - **PAR-015**: VMS Search API가 `MetadataStore`를 거치지 않고 raw SQL로 `event_clip_path`가 담긴 `detail` JSON을 파싱 없이 반환해(FC-011) 영상 재생이 불가능했던 문제 → API가 `MetadataStore.query_events()`를 재사용하도록 바꾸고 `GET /events/{id}/clip`(FileResponse)을 신설해 해결 (실제 EXP-023 산출물로 Event Clip 27,033,338 bytes를 byte-for-byte 서빙 확인, has_clip 필터로 ENTER 4건/EXIT 4건 정확히 분리)
+- **PAR-016**: Attribute 색상 분류(대안 B)의 그림자/하이라이트 필터가 저채도인 진짜 검정 옷까지 항상 제외시켜, 클로즈업 crop에서 소수 피부색 픽셀만 남아 Hue 다수결을 오염시키는 버그 발견(대안 B 최초 구현이 Baseline보다 낮은 Accuracy를 내는 역설로 실측) → 피부색 필터 + 필터 통과 비율 기반 폴백으로 수정 (전체 Accuracy 16%→40%, Baseline(32%)/대안 A(28%) 모두 상회, 조명 안정성 15%→40%)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -251,6 +269,7 @@ python scripts/run_exp020_circular_buffer.py                    # Circular Buffe
 python scripts/run_exp021_compressed_circular_buffer.py         # FC-009 재현 + JPEG 압축 버퍼링 (PAR-012)
 python scripts/run_exp022_tier_quality_circular_buffer.py       # Circular Buffer Tier별 quality 차등 (PAR-013)
 python scripts/run_exp023_pipeline_integration.py               # Adaptive Recording+Circular Buffer 실시간 파이프라인 통합, Pre-Roll 추출 시점 A/B (PAR-014)
+python scripts/run_exp025_attribute_color.py                    # Attribute 상/하의 색상 분류 Baseline/A/B + 조명 안정성 (PAR-016)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py

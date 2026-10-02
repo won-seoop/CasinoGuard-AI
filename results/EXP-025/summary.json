@@ -1,0 +1,35 @@
+{
+  "per_method_condition": {
+    "baseline": {
+      "normal": 0.2,
+      "low_light": 0.8,
+      "strong_light": 0.2,
+      "warm_cast": 0.0,
+      "cool_cast": 0.4
+    },
+    "a": {
+      "normal": 0.2,
+      "low_light": 0.7,
+      "strong_light": 0.1,
+      "warm_cast": 0.1,
+      "cool_cast": 0.3
+    },
+    "b": {
+      "normal": 0.4,
+      "low_light": 0.6,
+      "strong_light": 0.3,
+      "warm_cast": 0.4,
+      "cool_cast": 0.3
+    }
+  },
+  "per_method_overall": {
+    "baseline": 0.32,
+    "a": 0.28,
+    "b": 0.4
+  },
+  "lighting_stability_accuracy": {
+    "baseline": 0.35,
+    "a": 0.3,
+    "b": 0.4
+  }
+}
