@@ -1,0 +1,115 @@
+{
+  "per_method_condition": {
+    "baseline": {
+      "normal": 0.5,
+      "low_light": 0.7,
+      "strong_light": 0.3,
+      "warm_cast": 0.4,
+      "cool_cast": 0.3
+    },
+    "alt_a": {
+      "normal": 0.5,
+      "low_light": 0.6,
+      "strong_light": 0.3,
+      "warm_cast": 0.4,
+      "cool_cast": 0.3
+    },
+    "alt_b": {
+      "normal": 0.5,
+      "low_light": 0.6,
+      "strong_light": 0.3,
+      "warm_cast": 0.5,
+      "cool_cast": 0.5
+    }
+  },
+  "per_method_overall": {
+    "baseline": 0.44,
+    "alt_a": 0.42,
+    "alt_b": 0.48
+  },
+  "lighting_stability_accuracy": {
+    "baseline": 0.425,
+    "alt_a": 0.4,
+    "alt_b": 0.475
+  },
+  "fc012_black_gt_cells": {
+    "baseline": {
+      "overall_accuracy": 0.4286,
+      "overall_blue_rate": 0.3143,
+      "per_condition": {
+        "normal": {
+          "accuracy": 0.5714,
+          "blue_rate": 0.1429
+        },
+        "low_light": {
+          "accuracy": 1.0,
+          "blue_rate": 0.0
+        },
+        "strong_light": {
+          "accuracy": 0.0,
+          "blue_rate": 0.4286
+        },
+        "warm_cast": {
+          "accuracy": 0.4286,
+          "blue_rate": 0.1429
+        },
+        "cool_cast": {
+          "accuracy": 0.1429,
+          "blue_rate": 0.8571
+        }
+      }
+    },
+    "alt_a": {
+      "overall_accuracy": 0.4,
+      "overall_blue_rate": 0.3143,
+      "per_condition": {
+        "normal": {
+          "accuracy": 0.5714,
+          "blue_rate": 0.1429
+        },
+        "low_light": {
+          "accuracy": 0.8571,
+          "blue_rate": 0.0
+        },
+        "strong_light": {
+          "accuracy": 0.0,
+          "blue_rate": 0.4286
+        },
+        "warm_cast": {
+          "accuracy": 0.4286,
+          "blue_rate": 0.1429
+        },
+        "cool_cast": {
+          "accuracy": 0.1429,
+          "blue_rate": 0.8571
+        }
+      }
+    },
+    "alt_b": {
+      "overall_accuracy": 0.4286,
+      "overall_blue_rate": 0.4571,
+      "per_condition": {
+        "normal": {
+          "accuracy": 0.4286,
+          "blue_rate": 0.4286
+        },
+        "low_light": {
+          "accuracy": 0.8571,
+          "blue_rate": 0.0
+        },
+        "strong_light": {
+          "accuracy": 0.0,
+          "blue_rate": 1.0
+        },
+        "warm_cast": {
+          "accuracy": 0.4286,
+          "blue_rate": 0.4286
+        },
+        "cool_cast": {
+          "accuracy": 0.4286,
+          "blue_rate": 0.4286
+        }
+      }
+    }
+  }
+}

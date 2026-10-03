@@ -65,6 +65,31 @@ def _to_hsv(crop_bgr: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2HSV)
 
 
+def white_balance_gray_world(crop_bgr: np.ndarray, gain_min: float = 0.3, gain_max: float = 3.0) -> np.ndarray:
+    """카지노 조명(강한 인공조명/난색·한색 조명)으로 생긴 채널 간 색 Cast를 완화한다
+    (FC-012, EXP-026 대안 B).
+
+    Gray World 가정(crop 전체 채널 평균이 중립 회색에 가까워야 한다)으로 채널별
+    게인을 계산해 보정한다. EXP-025에서 검정 옷이 strong_light/cool_cast 조건에서
+    blue로 오분류된 원인은, HSV의 S(채도)가 R/G/B의 "상대적" 차이이기 때문에 어두운
+    픽셀(V가 작음)일수록 Cast로 생긴 작은 절대 채널 차이도 S를 크게 부풀린다는
+    것이었다(원인 분석: EXP-026 experiment.md). Hue 분류 이전에 채널 Cast 자체를
+    줄이면 이 부풀림도 같이 줄어든다.
+
+    gain_min/gain_max: crop이 이미 거의 무채색(검정/흰색 단색)이면 평균이 0에 가까워
+    게인이 극단적으로 커질 수 있어 안전 범위로 clip한다.
+    """
+    if crop_bgr.size == 0:
+        return crop_bgr
+    img = crop_bgr.astype(np.float32)
+    channel_means = img.reshape(-1, 3).mean(axis=0)
+    overall_mean = channel_means.mean()
+    gains = overall_mean / np.clip(channel_means, 1.0, None)
+    gains = np.clip(gains, gain_min, gain_max)
+    corrected = img * gains.reshape(1, 1, 3)
+    return np.clip(corrected, 0, 255).astype(np.uint8)
+
+
 def whole_bbox_mean_color(crop_bgr: np.ndarray) -> str:
     """Baseline: bbox 전체 픽셀의 평균 BGR -> HSV 변환 -> 분류. 상/하의 구분 없음."""
     if crop_bgr.size == 0:
@@ -168,6 +193,22 @@ def classify_person_attributes(crop_bgr: np.ndarray, method: str = "b") -> dict[
     if method == "b":
         upper, lower = split_upper_lower(
             crop_bgr,
+            head_skip_ratio=0.22,
+            upper_end_ratio=0.55,
+            foot_skip_ratio=0.08,
+            side_margin_ratio=0.12,
+        )
+        return {"upper": region_dominant_color(upper), "lower": region_dominant_color(lower)}
+    if method == "b_wb":
+        # EXP-026: Gray World WB를 method "b" 앞에 추가한 실험용 변형. FC-012(검정
+        # 옷의 strong_light/cool_cast 오분류)를 겨냥했으나, 측정 결과 검정 GT 셀
+        # 자체의 정확도는 WB 적용 전후로 동일했고(오분류 조건만 재배치), low_light에
+        # 새로운 regression(-10pp)이 생겨 production 기본값("b")으로 승격하지 않았다
+        # (experiment.md EXP-026 Decision 참고). 전체 평균 정확도는 올랐지만(다른
+        # 색상 셀에서 개선) 이는 이 실험이 원래 겨냥한 문제와 무관하다.
+        balanced = white_balance_gray_world(crop_bgr)
+        upper, lower = split_upper_lower(
+            balanced,
             head_skip_ratio=0.22,
             upper_end_ratio=0.55,
             foot_skip_ratio=0.08,
