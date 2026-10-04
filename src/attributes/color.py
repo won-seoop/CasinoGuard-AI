@@ -182,6 +182,25 @@ def region_dominant_color(
     return classify_hsv_pixel(float(med_h), float(med_s), float(med_v))
 
 
+def region_color_signal(region_bgr: np.ndarray) -> dict[str, float]:
+    """영역의 raw HSV 채도(S)와 raw BGR 채널 표준편차 평균을 계산한다.
+
+    EXP-027(무채색 신호 분리도 분석)에서 "achromatic(검정/흰색/회색) 영역과 chromatic
+    영역을 확신도 신호로 구분해 낮은 확신도를 unknown으로 표시할 수 있는가"를 검증하기
+    위해 쓰였다. 실측 결과(coco128 실제 crop 21개, 상/하 42개 영역) 두 신호 모두
+    achromatic/chromatic 범위가 완전히 겹쳐(achromatic 채도 최댓값 158.89 > chromatic
+    채도 최솟값 62.92) 분리 가능한 신호가 아님을 확인했다 - PAR-018 Decision 참고.
+    이 함수 자체는 계속 쓰일 수 있어 src/에 남기지만, 이 신호만으로 confidence
+    threshold를 만드는 기능은 추가하지 않는다.
+    """
+    if region_bgr.size == 0:
+        return {"mean_saturation": 0.0, "bgr_channel_std": 0.0}
+    hsv = _to_hsv(region_bgr).reshape(-1, 3).astype(np.float32)
+    mean_saturation = float(hsv[:, 1].mean())
+    bgr_channel_std = float(region_bgr.reshape(-1, 3).astype(np.float32).std(axis=0).mean())
+    return {"mean_saturation": mean_saturation, "bgr_channel_std": bgr_channel_std}
+
+
 def classify_person_attributes(crop_bgr: np.ndarray, method: str = "b") -> dict[str, str]:
     """person crop -> {"upper": color, "lower": color} (method: "baseline"|"a"|"b")."""
     if method == "baseline":

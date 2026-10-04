@@ -5,6 +5,7 @@ from src.attributes.color import (
     COLOR_BUCKETS,
     classify_hsv_pixel,
     classify_person_attributes,
+    region_color_signal,
     region_dominant_color,
     region_mean_color,
     split_upper_lower,
@@ -174,6 +175,38 @@ class TestWhiteBalanceGrayWorld:
         img = solid_bgr((1, 1, 90), h=50, w=50)  # R만 매우 큼, B/G는 거의 0
         corrected = white_balance_gray_world(img, gain_min=0.3, gain_max=3.0)
         assert corrected.max() <= 90 * 3.0 + 1  # clip 범위를 벗어난 폭주가 없어야 함
+
+
+class TestRegionColorSignal:
+    """EXP-027: '무채색 확신도' fallback을 설계하기 전에, 그 신호(채도/raw BGR
+    표준편차) 계산 자체를 고정해두는 Regression Test. 신호가 achromatic/chromatic을
+    실제로 분리하지 못한다는 결론(PAR-018)은 coco128 실측 데이터 기반이라 여기서
+    재현하지 않지만, 극단적인 합성 케이스(순수 무채색 vs 순수 채도)에서 신호가 방향성은
+    맞게 움직이는지는 고정해 둔다.
+    """
+
+    def test_empty_region_returns_zero_signal(self):
+        result = region_color_signal(np.zeros((0, 0, 3), dtype=np.uint8))
+        assert result == {"mean_saturation": 0.0, "bgr_channel_std": 0.0}
+
+    def test_pure_gray_has_zero_saturation(self):
+        img = solid_bgr((128, 128, 128), h=50, w=50)
+        result = region_color_signal(img)
+        assert result["mean_saturation"] == pytest.approx(0.0, abs=1e-6)
+        assert result["bgr_channel_std"] == pytest.approx(0.0, abs=1e-6)
+
+    def test_saturated_color_has_nonzero_saturation(self):
+        img = solid_bgr(RED, h=50, w=50)
+        result = region_color_signal(img)
+        assert result["mean_saturation"] > 100.0
+
+    def test_mixed_region_has_nonzero_bgr_std(self):
+        """영역 내에 서로 다른 색(배경 Bleed 등)이 섞이면 채널 표준편차가 0보다
+        커야 한다 - 단색 영역(표준편차 0)과 구분되는 기본 성질."""
+        img = solid_bgr(BLACK, h=100, w=50)
+        img[:20, :] = WHITE
+        result = region_color_signal(img)
+        assert result["bgr_channel_std"] > 0.0
 
 
 class TestClassifyPersonAttributesBWb:

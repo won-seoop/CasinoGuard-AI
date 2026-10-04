@@ -162,6 +162,20 @@ White Balance(대안 B)와 raw BGR Spread 기반 무채색 Shortcut(대안 A)을
 기본값으로 승격하지 않고 FC-012를 "미해결"로 유지하되, 원인을 ①채널 비율 Cast형과
 ②노출/대비 손실형으로 분리해 기록했다(`PAR-017`).
 
+### coco128 기반 n 확장 재검증 + 무채색 신호 분리도 분석 (EXP-027, **PAR-018**)
+
+n=5(zidane.jpg/bus.jpg) 평가 Dataset의 "작고 편중됐다"는 한계를 실제로 검증하기 위해,
+coco128(실제 COCO 128장, `github.com/ultralytics/assets/releases/download/v0.0.0/
+coco128.zip`로 egress 제약 없이 접근 가능함을 새로 확인)에서 person crop 21개를 수동
+라벨링해 n을 늘려 재측정했다. 모든 method의 절대 Accuracy가 n=5 때보다 큰 폭으로
+낮아졌다(Baseline 32%→15%, 대안 A 28%→16%, 방법 B 40%→26%[normal 조명만 33%], B_wb
+48%→32%) — method 간 상대적 순위(Baseline≈A < B < B_wb)는 유지됐지만, 이전에 기록한
+절대 수치는 "작은 Dataset에서의 상대 비교 전용"으로 재규정했다. 또한 Roadmap이 다음
+후보로 제안했던 "무채색 확신도 점수 기반 unknown 표시"를 설계하기 전에 후보 신호(HSV
+채도, raw BGR 채널 표준편차)가 achromatic/chromatic을 실제로 분리하는지 먼저 측정했더니
+**둘 다 분리되지 않음**을 확인했다(achromatic 채도 최댓값 158.89 > chromatic 채도
+최솟값 62.92) — 검증 없이 기능부터 설계하는 것을 막은 사례다(`PAR-018`).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -187,7 +201,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 | FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
-| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). 미해결 유지, 원인 두 하위 유형으로 분리 |
+| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. 미해결 유지 |
 
 ## 14. 주요 기술 의사결정
 
@@ -215,6 +229,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-015**: VMS Search API가 `MetadataStore`를 거치지 않고 raw SQL로 `event_clip_path`가 담긴 `detail` JSON을 파싱 없이 반환해(FC-011) 영상 재생이 불가능했던 문제 → API가 `MetadataStore.query_events()`를 재사용하도록 바꾸고 `GET /events/{id}/clip`(FileResponse)을 신설해 해결 (실제 EXP-023 산출물로 Event Clip 27,033,338 bytes를 byte-for-byte 서빙 확인, has_clip 필터로 ENTER 4건/EXIT 4건 정확히 분리)
 - **PAR-016**: Attribute 색상 분류(대안 B)의 그림자/하이라이트 필터가 저채도인 진짜 검정 옷까지 항상 제외시켜, 클로즈업 crop에서 소수 피부색 픽셀만 남아 Hue 다수결을 오염시키는 버그 발견(대안 B 최초 구현이 Baseline보다 낮은 Accuracy를 내는 역설로 실측) → 피부색 필터 + 필터 통과 비율 기반 폴백으로 수정 (전체 Accuracy 16%→40%, Baseline(32%)/대안 A(28%) 모두 상회, 조명 안정성 15%→40%)
 - **PAR-017**: FC-012(검정 옷→blue 오분류) 수정을 위해 Gray World White Balance를 추가했더니 전체 평균 Accuracy는 올랐지만(0.44→0.48), FC-012가 겨냥하는 "GT=black" 35셀만 슬라이싱하면 Accuracy가 정확히 동일했음(15/35→15/35) → 평균 개선은 무관한 셀(진짜 파란 옷)의 부수 효과였음을 발견하고 production에 반영하지 않음(가설 기각을 정확한 Metric 슬라이싱으로 검증)
+- **PAR-018**: n=5 평가 Dataset의 Attribute Accuracy(32~48%)를 coco128 실제 crop 21개로 재검증하니 15~32%로 하락(method 순위는 유지) → 작은 Dataset 수치를 "운영 가능한 성능"으로 재인용하지 않기로 함. 동시에 "무채색 확신도" fallback 설계 전에 후보 신호(채도/raw BGR std)의 achromatic/chromatic 분리도를 먼저 측정해 둘 다 분리되지 않음을 확인하고 구현을 보류(검증 없는 기능 추가 방지)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -283,6 +298,7 @@ python scripts/run_exp022_tier_quality_circular_buffer.py       # Circular Buffe
 python scripts/run_exp023_pipeline_integration.py               # Adaptive Recording+Circular Buffer 실시간 파이프라인 통합, Pre-Roll 추출 시점 A/B (PAR-014)
 python scripts/run_exp025_attribute_color.py                    # Attribute 상/하의 색상 분류 Baseline/A/B + 조명 안정성 (PAR-016)
 python scripts/run_exp026_fc012_white_balance.py                 # FC-012 재현 + White Balance/Achromatic Shortcut 대안 비교 (PAR-017)
+python scripts/run_exp027_attribute_coco128.py                   # coco128 기반 n 확장 재검증 + 무채색 신호 분리도 분석 (PAR-018)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
