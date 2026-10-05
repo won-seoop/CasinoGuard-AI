@@ -5,10 +5,14 @@ from src.attributes.color import (
     COLOR_BUCKETS,
     classify_hsv_pixel,
     classify_person_attributes,
+    classify_person_attributes_with_mask,
+    classify_person_attributes_with_mask_and_wb,
     region_color_signal,
     region_dominant_color,
+    region_dominant_color_from_pixels,
     region_mean_color,
     split_upper_lower,
+    split_upper_lower_by_mask,
     white_balance_gray_world,
     whole_bbox_mean_color,
 )
@@ -227,6 +231,82 @@ class TestClassifyPersonAttributesBWb:
         result = classify_person_attributes(img, method="b")
         assert result["upper"] == "white"
         assert result["lower"] == "blue"
+
+
+class TestRegionDominantColorFromPixels:
+    def test_flat_pixel_array_classified_same_as_2d_region(self):
+        """(N,3) 픽셀 배열을 넣어도 동등한 2D 영역과 같은 결과가 나와야 한다
+        (reshape 래퍼가 region_dominant_color와 동치임을 고정)."""
+        region = solid_bgr(BLUE, h=40, w=40)
+        pixels = region.reshape(-1, 3)
+        assert region_dominant_color_from_pixels(pixels) == region_dominant_color(region)
+
+    def test_empty_pixels_defaults_to_gray(self):
+        assert region_dominant_color_from_pixels(np.zeros((0, 3), dtype=np.uint8)) == "gray"
+
+
+class TestSplitUpperLowerByMask:
+    def test_mask_split_matches_vertical_ratio(self):
+        mask = np.ones((100, 60), dtype=bool)
+        upper_mask, lower_mask = split_upper_lower_by_mask(
+            mask, head_skip_ratio=0.0, upper_end_ratio=0.5, foot_skip_ratio=0.0
+        )
+        assert upper_mask.sum() == 50 * 60
+        assert lower_mask.sum() == 50 * 60
+
+    def test_false_outside_mask_is_excluded(self):
+        """마스크가 False인(배경) 픽셀은 좌우 마진 없이도 상/하 영역에서 제외돼야 한다."""
+        mask = np.zeros((100, 60), dtype=bool)
+        mask[:, 20:40] = True  # 중앙 폭만 person
+        upper_mask, lower_mask = split_upper_lower_by_mask(mask, upper_end_ratio=0.5)
+        assert upper_mask[:, :20].sum() == 0
+        assert upper_mask[:, 40:].sum() == 0
+
+
+class TestClassifyPersonAttributesWithMask:
+    def test_mask_excludes_background_bleed_that_defeats_method_b(self):
+        """person이 bbox 폭의 20%만 차지하고 나머지 80%가 다른 Hue(빨강) 배경이면,
+        method b의 side_margin_ratio=0.12(좌우 12%)로는 배경을 다 걷어내지 못해 Hue
+        다수결이 배경 쪽으로 넘어간다. 정확한 person mask를 쓰는 대안 C는 배경 폭과
+        무관하게 실제 옷 색(파랑)을 올바르게 분류해야 한다."""
+        img = solid_bgr(RED, h=100, w=100)
+        img[:, 40:60] = BLUE  # person(파랑)은 중앙 20%뿐, 나머지 80%는 배경(빨강)
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[:, 40:60] = True
+
+        method_b_result = classify_person_attributes(img, method="b")
+        mask_result = classify_person_attributes_with_mask(img, mask)
+        assert mask_result["upper"] == "blue"
+        assert mask_result["lower"] == "blue"
+        assert method_b_result["upper"] == "red"  # method b는 여전히 배경(빨강)에 속음
+
+    def test_mask_below_min_fraction_falls_back_to_method_b_region(self):
+        """세그멘테이션이 거의 실패해 마스크 픽셀이 거의 없으면(occlusion 등) method b와
+        동일한 고정 비율 사각형 영역으로 폴백해야 한다(마스크를 과신하지 않음)."""
+        img = solid_bgr(GREEN, h=100, w=100)
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[0, 0] = True  # 거의 비어 있는 마스크
+        result = classify_person_attributes_with_mask(img, mask, min_mask_fraction=0.05)
+        fallback = classify_person_attributes(img, method="b")
+        assert result == fallback
+
+    def test_empty_crop_defaults_to_gray(self):
+        result = classify_person_attributes_with_mask(
+            np.zeros((0, 0, 3), dtype=np.uint8), np.zeros((0, 0), dtype=bool)
+        )
+        assert result == {"upper": "gray", "lower": "gray"}
+
+
+class TestClassifyPersonAttributesWithMaskAndWb:
+    def test_combines_mask_and_white_balance(self):
+        """대안 C+WB: White Balance가 입력에 적용된 뒤 Mask 기반 분리가 이어져야 한다
+        (순서가 바뀌면 안 됨 - WB는 crop 전체 통계를 쓰므로 마스킹 이후에 적용하면
+        배경이 제외된 통계로 게인이 달라진다)."""
+        img = solid_bgr((180, 90, 80), h=100, w=100)  # cool_cast 모사
+        mask = np.ones((100, 100), dtype=bool)
+        result = classify_person_attributes_with_mask_and_wb(img, mask)
+        assert result["upper"] in COLOR_BUCKETS
+        assert result["lower"] in COLOR_BUCKETS
 
 
 class TestClassifyPersonAttributes:

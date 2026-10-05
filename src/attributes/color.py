@@ -14,6 +14,11 @@ Person Crop -> (upper_color, lower_color) 검색 가능한 Metadata를 만드는
   그림자/하이라이트(S/V 극단) 픽셀 제거 + 남은 픽셀 중 최빈 Hue 클러스터 선택.
   배경이 소수 픽셀만 섞여 있으면 억제되고, 극단 밝기 픽셀을 걸러내 Hue 기반 분류가
   밝기 변화에 덜 흔들린다.
+- classify_person_attributes_with_mask(): 대안 C(EXP-028, 검증 대상). method b의
+  side_margin_ratio(좌우 고정 비율 제외)를 person Segmentation Mask 기반 픽셀 단위
+  배경 제외로 교체한다. "영역을 더 정확히 자르면 Accuracy가 오르는가"를 Mask 자체는
+  이 모듈에서 만들지 않고(세그멘테이션 모델 의존성을 분리) 호출부(EXP-028 스크립트)가
+  전달한다.
 """
 
 from __future__ import annotations
@@ -199,6 +204,92 @@ def region_color_signal(region_bgr: np.ndarray) -> dict[str, float]:
     mean_saturation = float(hsv[:, 1].mean())
     bgr_channel_std = float(region_bgr.reshape(-1, 3).astype(np.float32).std(axis=0).mean())
     return {"mean_saturation": mean_saturation, "bgr_channel_std": bgr_channel_std}
+
+
+def region_dominant_color_from_pixels(pixels_bgr: np.ndarray, **kwargs) -> str:
+    """세그멘테이션 마스크로 걸러낸 1차원 픽셀 집합(N,3)에 region_dominant_color와 동일한
+    필터링+Hue 다수결 로직을 적용한다 (대안 C, EXP-028). region_dominant_color는 내부적으로
+    입력을 (-1, 3)으로 reshape하므로 (N,1,3) 형태로 바꿔 그대로 재사용할 수 있다."""
+    if pixels_bgr.size == 0:
+        return "gray"
+    pseudo_region = pixels_bgr.reshape(-1, 1, 3).astype(np.uint8)
+    return region_dominant_color(pseudo_region, **kwargs)
+
+
+def split_upper_lower_by_mask(
+    mask: np.ndarray,
+    head_skip_ratio: float = 0.22,
+    upper_end_ratio: float = 0.55,
+    foot_skip_ratio: float = 0.08,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Person Segmentation Mask(crop과 동일 HxW의 bool 배열)를 상/하 영역으로 나눈다.
+
+    method b의 side_margin_ratio(좌우 고정 비율 제외)는 배경 Bleed를 "근사"로 줄이는
+    수단이었다. 마스크가 있으면 배경 픽셀 자체가 False이므로 좌우 마진이 필요 없다 —
+    세로 방향(머리/발)만 기존과 동일 비율로 제외한다.
+    """
+    height = mask.shape[0]
+    upper_mask = np.zeros_like(mask)
+    lower_mask = np.zeros_like(mask)
+    r0 = int(height * head_skip_ratio)
+    r1 = int(height * upper_end_ratio)
+    r2 = int(height * (1.0 - foot_skip_ratio))
+    upper_mask[r0:r1, :] = mask[r0:r1, :]
+    lower_mask[r1:r2, :] = mask[r1:r2, :]
+    return upper_mask, lower_mask
+
+
+def classify_person_attributes_with_mask(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    head_skip_ratio: float = 0.22,
+    upper_end_ratio: float = 0.55,
+    foot_skip_ratio: float = 0.08,
+    min_mask_fraction: float = 0.05,
+) -> dict[str, str]:
+    """대안 C(채택 여부 검증 대상, EXP-028): method b의 side_margin_ratio 고정 비율
+    배경 제외를 person Instance Segmentation Mask 기반 픽셀 단위 배경 제외로 교체한다.
+    상/하 분리 비율, 그림자/하이라이트/피부색 필터, Hue 다수결은 method b와 동일하게
+    유지해 "영역을 더 정확하게 자르면 Accuracy가 오르는가"만 분리해서 검증한다.
+
+    min_mask_fraction: 세그멘테이션이 실패하거나(Occlusion, 작은 Instance) 마스크가
+    영역 내 픽셀의 이 비율보다 적게 덮으면 마스크를 신뢰하지 않고 method b와 동일한
+    고정 비율 사각형 영역(side_margin_ratio=0.12)으로 되돌아간다 — method b의
+    min_filtered_fraction과 같은 이유(소수 마스크 픽셀만으로는 대표성이 없다).
+    """
+    if crop_bgr.size == 0 or mask.size == 0:
+        return {"upper": "gray", "lower": "gray"}
+    upper_mask, lower_mask = split_upper_lower_by_mask(mask, head_skip_ratio, upper_end_ratio, foot_skip_ratio)
+    fallback_upper, fallback_lower = split_upper_lower(
+        crop_bgr,
+        head_skip_ratio=head_skip_ratio,
+        upper_end_ratio=upper_end_ratio,
+        foot_skip_ratio=foot_skip_ratio,
+        side_margin_ratio=0.12,
+    )
+
+    def _resolve(region_mask: np.ndarray, fallback_region: np.ndarray) -> str:
+        total = region_mask.size
+        if total == 0 or region_mask.sum() < min_mask_fraction * total:
+            return region_dominant_color(fallback_region)
+        return region_dominant_color_from_pixels(crop_bgr[region_mask.astype(bool)])
+
+    return {"upper": _resolve(upper_mask, fallback_upper), "lower": _resolve(lower_mask, fallback_lower)}
+
+
+def classify_person_attributes_with_mask_and_wb(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    **kwargs,
+) -> dict[str, str]:
+    """대안 C+WB(EXP-028): 대안 C(Segmentation Mask 배경 제외)와 EXP-026 대안 B(Gray World
+    White Balance)를 함께 적용한다. EXP-028 실측에서 대안 C는 전체/GT=black Accuracy를
+    개선했지만 FC-012가 원래 겨냥한 cool_cast 흑백->blue 오분류율은 b_wb(WB만 적용)보다
+    오히려 나빴다(0.50 > 0.23) - 둘이 서로 다른 오분류 원인(배경 Bleed vs 채널 Cast)을
+    해결하므로 함께 적용하면 더 나을 수 있다는 가설을 검증하기 위해 추가했다.
+    """
+    balanced = white_balance_gray_world(crop_bgr)
+    return classify_person_attributes_with_mask(balanced, mask, **kwargs)
 
 
 def classify_person_attributes(crop_bgr: np.ndarray, method: str = "b") -> dict[str, str]:

@@ -1,0 +1,132 @@
+{
+  "n_ground_truth_crops": 21,
+  "n_segmentation_mask_matched": 21,
+  "methods": {
+    "baseline": {
+      "overall_accuracy": 0.1524,
+      "overall_correct": 32,
+      "overall_total": 210,
+      "normal_lighting_accuracy": 0.0714,
+      "gt_black_accuracy": 0.2273,
+      "gt_black_total_cells": 110,
+      "gt_black_misclassified_as_blue_rate_by_condition": {
+        "strong_light": 0.0,
+        "cool_cast": 0.7273
+      },
+      "accuracy_by_condition": {
+        "normal": 0.0714,
+        "low_light": 0.5,
+        "strong_light": 0.0714,
+        "warm_cast": 0.0,
+        "cool_cast": 0.119
+      }
+    },
+    "a": {
+      "overall_accuracy": 0.1571,
+      "overall_correct": 33,
+      "overall_total": 210,
+      "normal_lighting_accuracy": 0.0714,
+      "gt_black_accuracy": 0.2273,
+      "gt_black_total_cells": 110,
+      "gt_black_misclassified_as_blue_rate_by_condition": {
+        "strong_light": 0.0455,
+        "cool_cast": 0.7273
+      },
+      "accuracy_by_condition": {
+        "normal": 0.0714,
+        "low_light": 0.4524,
+        "strong_light": 0.119,
+        "warm_cast": 0.0476,
+        "cool_cast": 0.0952
+      }
+    },
+    "b": {
+      "overall_accuracy": 0.2619,
+      "overall_correct": 55,
+      "overall_total": 210,
+      "normal_lighting_accuracy": 0.3333,
+      "gt_black_accuracy": 0.3909,
+      "gt_black_total_cells": 110,
+      "gt_black_misclassified_as_blue_rate_by_condition": {
+        "strong_light": 0.1818,
+        "cool_cast": 0.5909
+      },
+      "accuracy_by_condition": {
+        "normal": 0.3333,
+        "low_light": 0.4048,
+        "strong_light": 0.2143,
+        "warm_cast": 0.1667,
+        "cool_cast": 0.1905
+      }
+    },
+    "b_wb": {
+      "overall_accuracy": 0.3238,
+      "overall_correct": 68,
+      "overall_total": 210,
+      "normal_lighting_accuracy": 0.3571,
+      "gt_black_accuracy": 0.4909,
+      "gt_black_total_cells": 110,
+      "gt_black_misclassified_as_blue_rate_by_condition": {
+        "strong_light": 0.2273,
+        "cool_cast": 0.2273
+      },
+      "accuracy_by_condition": {
+        "normal": 0.3571,
+        "low_light": 0.4048,
+        "strong_light": 0.2381,
+        "warm_cast": 0.3095,
+        "cool_cast": 0.3095
+      }
+    },
+    "c": {
+      "overall_accuracy": 0.3524,
+      "overall_correct": 74,
+      "overall_total": 210,
+      "normal_lighting_accuracy": 0.4286,
+      "gt_black_accuracy": 0.5273,
+      "gt_black_total_cells": 110,
+      "gt_black_misclassified_as_blue_rate_by_condition": {
+        "strong_light": 0.1818,
+        "cool_cast": 0.5
+      },
+      "accuracy_by_condition": {
+        "normal": 0.4286,
+        "low_light": 0.4524,
+        "strong_light": 0.3333,
+        "warm_cast": 0.2619,
+        "cool_cast": 0.2857
+      },
+      "mask_matched_only_accuracy": 0.3524,
+      "mask_matched_only_total": 210
+    },
+    "c_wb": {
+      "overall_accuracy": 0.381,
+      "overall_correct": 80,
+      "overall_total": 210,
+      "normal_lighting_accuracy": 0.381,
+      "gt_black_accuracy": 0.5545,
+      "gt_black_total_cells": 110,
+      "gt_black_misclassified_as_blue_rate_by_condition": {
+        "strong_light": 0.2727,
+        "cool_cast": 0.2273
+      },
+      "accuracy_by_condition": {
+        "normal": 0.381,
+        "low_light": 0.5,
+        "strong_light": 0.3095,
+        "warm_cast": 0.3571,
+        "cool_cast": 0.3571
+      },
+      "mask_matched_only_accuracy": 0.381,
+      "mask_matched_only_total": 210
+    }
+  },
+  "inference_overhead": {
+    "n_images": 20,
+    "detector_ms_per_image": 71.21,
+    "segmenter_ms_per_image": 91.57,
+    "segmenter_overhead_ratio": 1.29,
+    "detector_model_size_mb": 5.61,
+    "segmenter_model_size_mb": 6.18
+  }
+}

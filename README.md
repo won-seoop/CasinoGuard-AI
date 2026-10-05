@@ -176,6 +176,21 @@ coco128.zip`로 egress 제약 없이 접근 가능함을 새로 확인)에서 pe
 **둘 다 분리되지 않음**을 확인했다(achromatic 채도 최댓값 158.89 > chromatic 채도
 최솟값 62.92) — 검증 없이 기능부터 설계하는 것을 막은 사례다(`PAR-018`).
 
+### Segmentation Mask 기반 영역 분리 (EXP-028, **PAR-019**)
+
+EXP-027이 다음 후보로 이월한 "더 근본적인 영역 분리 방법"을 검증했다. method b/b_wb는
+고정 비율 사각형(side_margin_ratio)으로 배경을 근사적으로만 제외하는데, person Instance
+Segmentation Mask(`yolo11n-seg.pt`)로 배경을 픽셀 단위로 정확히 제외하는 대안 C를 같은
+n=21 Ground Truth로 비교했다. **White Balance 없이 영역만 정확히 잘랐을 뿐인데** Overall
+Accuracy가 기존 최고(b_wb, 32.4%)를 넘어 35.2%, GT=black Accuracy는 52.7%로 올랐다 —
+그러나 GT=black→blue 오분류율(FC-012의 표적 실패)은 cool_cast에서 오히려 50.0%(b_wb
+22.7%보다 나쁨)로, Mask는 "배경 Bleed"는 해결해도 "조명 Cast로 인한 Hue 왜곡"은 전혀
+해결하지 못함을 실측으로 확인했다. 두 원인이 독립적이라는 가설에 따라 Mask+White
+Balance를 결합(c_wb)하니 Overall Accuracy 38.1%, GT=black Accuracy 55.5%로 모든 method
+중 최고를 기록하면서 cool_cast 오분류율도 b_wb 수준(22.7%)을 유지했다 — 단 strong_light
+(노출/대비 손실형 Cast)는 여전히 개선되지 않아 FC-012는 이번에도 미해결로 유지했다. 추가
+비용(Segmenter 모델)은 추론 시간 1.29배, 모델 용량 +0.57MB로 측정했다(`PAR-019`).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -201,7 +216,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 | FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
-| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. 미해결 유지 |
+| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. 미해결 유지 |
 
 ## 14. 주요 기술 의사결정
 
@@ -230,6 +245,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-016**: Attribute 색상 분류(대안 B)의 그림자/하이라이트 필터가 저채도인 진짜 검정 옷까지 항상 제외시켜, 클로즈업 crop에서 소수 피부색 픽셀만 남아 Hue 다수결을 오염시키는 버그 발견(대안 B 최초 구현이 Baseline보다 낮은 Accuracy를 내는 역설로 실측) → 피부색 필터 + 필터 통과 비율 기반 폴백으로 수정 (전체 Accuracy 16%→40%, Baseline(32%)/대안 A(28%) 모두 상회, 조명 안정성 15%→40%)
 - **PAR-017**: FC-012(검정 옷→blue 오분류) 수정을 위해 Gray World White Balance를 추가했더니 전체 평균 Accuracy는 올랐지만(0.44→0.48), FC-012가 겨냥하는 "GT=black" 35셀만 슬라이싱하면 Accuracy가 정확히 동일했음(15/35→15/35) → 평균 개선은 무관한 셀(진짜 파란 옷)의 부수 효과였음을 발견하고 production에 반영하지 않음(가설 기각을 정확한 Metric 슬라이싱으로 검증)
 - **PAR-018**: n=5 평가 Dataset의 Attribute Accuracy(32~48%)를 coco128 실제 crop 21개로 재검증하니 15~32%로 하락(method 순위는 유지) → 작은 Dataset 수치를 "운영 가능한 성능"으로 재인용하지 않기로 함. 동시에 "무채색 확신도" fallback 설계 전에 후보 신호(채도/raw BGR std)의 achromatic/chromatic 분리도를 먼저 측정해 둘 다 분리되지 않음을 확인하고 구현을 보류(검증 없는 기능 추가 방지)
+- **PAR-019**: Attribute 색상 분류의 고정 비율 사각형 영역이 배경을 구조적으로 포함하는 문제 → person Segmentation Mask로 배경을 픽셀 단위 제외(대안 C)하니 White Balance 없이도 Overall Accuracy가 기존 최고(b_wb 32.4%)를 넘어 35.2%로 개선, 단 FC-012의 표적 실패(cool_cast 흑→blue)는 그대로임을 확인(50.0%, b_wb보다 나쁨) → Mask+WB 결합(c_wb)으로 Overall/GT=black Accuracy 최고치(38.1%/55.5%) 달성하면서 cool_cast 오분류율도 b_wb 수준 유지(두 기법이 독립적인 원인을 해결함을 실측으로 확인)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -273,7 +289,7 @@ cd cctv
 python3 -m venv .venv && source .venv/bin/activate
 pip install opencv-python ultralytics numpy fastapi "uvicorn[standard]" pytest lap matplotlib
 
-# 단위 테스트 (50개)
+# 단위 테스트 (197개, 7 skipped)
 pytest tests/ -q
 
 # 각 Phase 실험 재현
@@ -299,6 +315,7 @@ python scripts/run_exp023_pipeline_integration.py               # Adaptive Recor
 python scripts/run_exp025_attribute_color.py                    # Attribute 상/하의 색상 분류 Baseline/A/B + 조명 안정성 (PAR-016)
 python scripts/run_exp026_fc012_white_balance.py                 # FC-012 재현 + White Balance/Achromatic Shortcut 대안 비교 (PAR-017)
 python scripts/run_exp027_attribute_coco128.py                   # coco128 기반 n 확장 재검증 + 무채색 신호 분리도 분석 (PAR-018)
+python scripts/run_exp028_attribute_segmentation_mask.py         # Segmentation Mask 기반 영역 분리 대안 C + Mask/WB 결합 (PAR-019)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
