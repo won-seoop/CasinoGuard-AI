@@ -1,0 +1,4 @@
+variant,fps,p50_ms,p95_ms,p99_ms,attribute_calls,attribute_call_p50_ms
+none,10.68,73.192,96.926,108.715,0,
+per_track,10.65,72.731,99.645,116.011,16,54.397
+per_frame,4.38,267.847,358.763,393.645,2045,53.371

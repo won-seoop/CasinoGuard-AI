@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS tracks (
     bestshot_score REAL,
     current_zone TEXT,
     dwell_frames INTEGER DEFAULT 0,
-    trajectory TEXT                   -- JSON list of [frame_idx, x, y] (bottom-center)
+    trajectory TEXT,                  -- JSON list of [frame_idx, x, y] (bottom-center)
+    upper_color TEXT,                 -- 지침 16 확장: Attribute Metadata (EXP-025~029)
+    lower_color TEXT
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -107,8 +109,24 @@ class MetadataStore:
         self.conn.execute("UPDATE tracks SET dwell_frames=? WHERE track_id=?", (dwell_frames, track_id))
         self.conn.commit()
 
+    def update_attributes(self, track_id: int, upper_color: str, lower_color: str) -> None:
+        """BestShot 확정 시점에 Track당 1회 계산된 상/하의 색상을 저장한다 (EXP-029, 지침 16/19).
+
+        BestShot score와 마찬가지로 Track 생애 전체가 아니라 확정된 BestShot 1장만 기준으로
+        계산되므로, BestShot을 먼저 upsert(update_bestshot)한 뒤에 호출하는 순서를 따른다
+        (강제하지는 않음 - FK 제약과 달리 두 컬럼 모두 Track row 자체에 속해 순서 의존성 없음).
+        """
+        self.conn.execute(
+            "UPDATE tracks SET upper_color=?, lower_color=? WHERE track_id=?",
+            (upper_color, lower_color, track_id),
+        )
+        self.conn.commit()
+
     def query_tracks(self, min_dwell_frames: int | None = None, zone: str | None = None) -> list[dict]:
-        sql = "SELECT track_id, class, first_seen, last_seen, current_zone, dwell_frames, bestshot_path FROM tracks WHERE 1=1"
+        sql = (
+            "SELECT track_id, class, first_seen, last_seen, current_zone, dwell_frames, "
+            "bestshot_path, upper_color, lower_color FROM tracks WHERE 1=1"
+        )
         params: list = []
         if min_dwell_frames is not None:
             sql += " AND dwell_frames >= ?"

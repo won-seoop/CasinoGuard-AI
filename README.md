@@ -191,6 +191,18 @@ Balance를 결합(c_wb)하니 Overall Accuracy 38.1%, GT=black Accuracy 55.5%로
 (노출/대비 손실형 Cast)는 여전히 개선되지 않아 FC-012는 이번에도 미해결로 유지했다. 추가
 비용(Segmenter 모델)은 추론 시간 1.29배, 모델 용량 +0.57MB로 측정했다(`PAR-019`).
 
+### Attribute 실시간 파이프라인 통합 - 호출 빈도 A/B (Stretch, EXP-029, **PAR-020**)
+
+EXP-028까지는 Attribute(c_wb) 분류 자체의 Accuracy만 오프라인 정지 이미지로 측정했고, 실제
+Detection+Tracking+BestShot이 매 프레임 도는 파이프라인에 연결했을 때 FPS에 미치는 영향은
+측정한 적이 없었다. 매 프레임·활성 Track마다 호출하는 방식(대안 A)을 실측하자 Segmentation
+추론 비용이 누적되어 FPS가 10.68→4.38(**-59.0%**)까지 떨어졌고, BestShot이 확정되는
+순간(Track 소실/영상 종료)에만 Track당 1회 호출하는 방식(대안 B, 지침 12/19의 원래 설계
+의도)은 같은 조건에서 FPS 저하가 **0.28%**에 그쳤다. 대안 B를 `run_full_pipeline.py`에
+실제로 연결하고 `MetadataStore`에 `upper_color`/`lower_color` 컬럼과
+`update_attributes()`를 추가했다(VMS API 노출은 Accuracy가 아직 production 임계치에
+못 미쳐 계속 보류, `PAR-020`).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -246,6 +258,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-017**: FC-012(검정 옷→blue 오분류) 수정을 위해 Gray World White Balance를 추가했더니 전체 평균 Accuracy는 올랐지만(0.44→0.48), FC-012가 겨냥하는 "GT=black" 35셀만 슬라이싱하면 Accuracy가 정확히 동일했음(15/35→15/35) → 평균 개선은 무관한 셀(진짜 파란 옷)의 부수 효과였음을 발견하고 production에 반영하지 않음(가설 기각을 정확한 Metric 슬라이싱으로 검증)
 - **PAR-018**: n=5 평가 Dataset의 Attribute Accuracy(32~48%)를 coco128 실제 crop 21개로 재검증하니 15~32%로 하락(method 순위는 유지) → 작은 Dataset 수치를 "운영 가능한 성능"으로 재인용하지 않기로 함. 동시에 "무채색 확신도" fallback 설계 전에 후보 신호(채도/raw BGR std)의 achromatic/chromatic 분리도를 먼저 측정해 둘 다 분리되지 않음을 확인하고 구현을 보류(검증 없는 기능 추가 방지)
 - **PAR-019**: Attribute 색상 분류의 고정 비율 사각형 영역이 배경을 구조적으로 포함하는 문제 → person Segmentation Mask로 배경을 픽셀 단위 제외(대안 C)하니 White Balance 없이도 Overall Accuracy가 기존 최고(b_wb 32.4%)를 넘어 35.2%로 개선, 단 FC-012의 표적 실패(cool_cast 흑→blue)는 그대로임을 확인(50.0%, b_wb보다 나쁨) → Mask+WB 결합(c_wb)으로 Overall/GT=black Accuracy 최고치(38.1%/55.5%) 달성하면서 cool_cast 오분류율도 b_wb 수준 유지(두 기법이 독립적인 원인을 해결함을 실측으로 확인)
+- **PAR-020**: Attribute 분류를 실시간 파이프라인에 연결할 때 호출 빈도를 검증 없이 정하면 위험하다는 것을 매 프레임 호출(대안 A)의 실측 FPS 저하(10.68→4.38, -59.0%)로 먼저 확인 → BestShot 확정 시점에 Track당 1회만 호출하는 방식(대안 B)으로 `run_full_pipeline.py`에 실제로 연결해 FPS 저하를 0.28%로 줄임(Attribute 호출 수 2045→16, 900프레임 기준)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -289,7 +302,7 @@ cd cctv
 python3 -m venv .venv && source .venv/bin/activate
 pip install opencv-python ultralytics numpy fastapi "uvicorn[standard]" pytest lap matplotlib
 
-# 단위 테스트 (197개, 7 skipped)
+# 단위 테스트 (202개, 7 skipped)
 pytest tests/ -q
 
 # 각 Phase 실험 재현
@@ -316,6 +329,7 @@ python scripts/run_exp025_attribute_color.py                    # Attribute 상/
 python scripts/run_exp026_fc012_white_balance.py                 # FC-012 재현 + White Balance/Achromatic Shortcut 대안 비교 (PAR-017)
 python scripts/run_exp027_attribute_coco128.py                   # coco128 기반 n 확장 재검증 + 무채색 신호 분리도 분석 (PAR-018)
 python scripts/run_exp028_attribute_segmentation_mask.py         # Segmentation Mask 기반 영역 분리 대안 C + Mask/WB 결합 (PAR-019)
+python scripts/run_exp029_attribute_pipeline_integration.py      # Attribute 실시간 통합 호출 빈도 A(매 프레임)/B(Track당 1회) 비교 (PAR-020)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
@@ -336,10 +350,11 @@ cctv/
     analytics/            # Heatmap + Crowd Analysis (EXP-016, PAR-007)
     recording/            # Adaptive Recording Tier/Event Clip 계획 (EXP-017, PAR-008)
     metadata/             # Metadata Store (SQLite)
+    attributes/           # 상/하의 색상 분류 (EXP-025~029) + pipeline.py(Track당 1회 호출, PAR-020)
     api/                  # VMS Search API (FastAPI)
-  scripts/                # EXP-001~017 실행 스크립트 + 통합 파이프라인
-  tests/                  # Unit Test 90개 이상
-  experiments/            # EXP-001~010/014~017, PAR-001~008 기록
+  scripts/                # EXP-001~029 실행 스크립트 + 통합 파이프라인
+  tests/                  # Unit Test 200개 이상
+  experiments/            # EXP-001~029, PAR-001~020 기록
   results/                # 실행 결과(CSV, 스냅샷, BestShot 그리드)
   data/                   # raw/test 영상 (대용량은 git 제외)
 ```

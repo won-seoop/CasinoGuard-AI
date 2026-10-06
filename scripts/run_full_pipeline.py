@@ -10,8 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 from ultralytics import YOLO  # noqa: E402
 
+from attributes.pipeline import classify_track_attributes_once  # noqa: E402
 from bestshot.scorer import bestshot_score  # noqa: E402
 from bestshot.tracker import BestShotTracker  # noqa: E402
 from events.dwell import DwellCounter  # noqa: E402
@@ -19,6 +21,33 @@ from events.line_crossing import LineCrossingDetector  # noqa: E402
 from events.loitering import LoiteringDetector  # noqa: E402
 from events.roi_state_machine import ROIStateMachine, bottom_center  # noqa: E402
 from metadata.store import MetadataStore  # noqa: E402
+
+
+def segment_largest_instance_mask(segmenter: YOLO, crop_bgr) -> np.ndarray:
+    """BestShot crop 자체에 Segmentation 모델을 다시 돌려(EXP-028의 "전체 프레임 Segmentation
+    + bbox IoU 매칭" 대신 crop 단위로) person mask를 얻는다. BestShotTracker는 PAR-004 Memory
+    Leak 수정 이후 Track마다 원본 프레임이 아니라 최종 crop 1장만 들고 있으므로, 원본 프레임에
+    대한 Segmentation+매칭은 애초에 선택지가 아니다 - crop 자체를 다시 Segment하는 쪽이 더
+    단순하고 메모리 사용량도 늘리지 않는다 (EXP-029 Decision 참고).
+
+    crop에 다른 사람이 함께 잡혀 있을 수 있어 면적이 가장 큰 Instance를 선택한다. 매칭되는
+    Instance가 없으면(세그멘테이션 실패) 전부 False인 mask를 반환해 classify_person_attributes_
+    with_mask의 min_mask_fraction fallback이 고정 비율 사각형으로 되돌아가도록 한다.
+    """
+    result = segmenter.predict(crop_bgr, classes=[PERSON_CLASS_ID], conf=0.4, verbose=False)[0]
+    if result.masks is None or len(result.masks.data) == 0:
+        return np.zeros(crop_bgr.shape[:2], dtype=bool)
+    masks = result.masks.data.cpu().numpy()
+    areas = masks.reshape(len(masks), -1).sum(axis=1)
+    best = masks[int(np.argmax(areas))]
+    resized = cv2.resize(best, (crop_bgr.shape[1], crop_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
+    return resized.astype(bool)
+
+
+def finalize_track_attributes(segmenter: YOLO, store: MetadataStore, track_id: int, crop) -> None:
+    attrs = classify_track_attributes_once(crop, lambda c: segment_largest_instance_mask(segmenter, c))
+    store.update_attributes(track_id, upper_color=attrs["upper"], lower_color=attrs["lower"])
+
 
 PERSON_CLASS_ID = 0
 ROI_POLYGON = [(950, 650), (1750, 650), (1850, 1080), (700, 1080)]
@@ -38,6 +67,10 @@ def main():
 
     store = MetadataStore(db_path)
     model = YOLO("yolo11n.pt")
+    # EXP-029: Attribute Metadata(c_wb, 지침 19)를 Track당 1회 BestShot 확정 시점에만 호출한다.
+    # 매 프레임 호출(대안 A)은 EXP-029에서 실측한 대로 FPS를 크게 떨어뜨려 기각됐다 - 세그멘터는
+    # 여기서 한 번만 로드해 매 호출마다 모델을 다시 올리는 추가 비용을 만들지 않는다.
+    segmenter = YOLO("yolo11n-seg.pt")
     video_path = ROOT / "data/raw/crowded_intersection_1080p.webm"
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
@@ -120,6 +153,7 @@ def main():
                     path = bestshot_dir / f"track_{tid}.jpg"
                     cv2.imwrite(str(path), final.crop)
                     store.update_bestshot(tid, str(path.relative_to(ROOT)), round(final.score, 3))
+                    finalize_track_attributes(segmenter, store, tid, final.crop)
                     saved += 1
                 del last_seen[tid]
 
@@ -137,9 +171,8 @@ def main():
             path = bestshot_dir / f"track_{tid}.jpg"
             cv2.imwrite(str(path), final.crop)
             store.update_bestshot(tid, str(path.relative_to(ROOT)), round(final.score, 3))
+            finalize_track_attributes(segmenter, store, tid, final.crop)
             saved += 1
-
-    import numpy as np
 
     lat_ms = np.array(frame_latencies_sec) * 1000
     p50, p95, p99 = np.percentile(lat_ms, [50, 95, 99])

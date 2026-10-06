@@ -60,6 +60,23 @@ def test_update_bestshot_sets_path_and_score():
     assert rows[0]["bestshot_path"] == "results/bestshot/track_1.jpg"
 
 
+def test_update_attributes_sets_upper_and_lower_color():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone=None)
+    store.update_attributes(1, upper_color="black", lower_color="blue")
+    rows = store.query_tracks()
+    assert rows[0]["upper_color"] == "black"
+    assert rows[0]["lower_color"] == "blue"
+
+
+def test_query_tracks_attributes_default_to_none_before_update_attributes():
+    store = make_store()
+    store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone=None)
+    rows = store.query_tracks()
+    assert rows[0]["upper_color"] is None
+    assert rows[0]["lower_color"] is None
+
+
 def test_add_event_returns_event_id():
     store = make_store()
     store.upsert_track(1, "person", 0, 0.9, (0, 0, 10, 10), (5, 10), zone="INSIDE")

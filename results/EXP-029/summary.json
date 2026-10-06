@@ -1,0 +1,71 @@
+{
+  "presence_windows": [
+    [
+      30,
+      200
+    ],
+    [
+      310,
+      480
+    ],
+    [
+      590,
+      760
+    ]
+  ],
+  "n_frames": 900,
+  "variants": {
+    "none": {
+      "variant": "none",
+      "n_frames": 900,
+      "wall_clock_sec": 84.28,
+      "fps": 10.68,
+      "per_frame_latency_ms": {
+        "p50": 73.192,
+        "p95": 96.926,
+        "p99": 108.715,
+        "mean": 72.673
+      },
+      "attribute_calls": 0,
+      "attribute_call_latency_ms": null
+    },
+    "per_track": {
+      "variant": "per_track",
+      "n_frames": 900,
+      "wall_clock_sec": 84.52,
+      "fps": 10.65,
+      "per_frame_latency_ms": {
+        "p50": 72.731,
+        "p95": 99.645,
+        "p99": 116.011,
+        "mean": 73.63
+      },
+      "attribute_calls": 16,
+      "attribute_call_latency_ms": {
+        "p50": 54.397,
+        "mean": 59.063
+      }
+    },
+    "per_frame": {
+      "variant": "per_frame",
+      "n_frames": 900,
+      "wall_clock_sec": 205.36,
+      "fps": 4.38,
+      "per_frame_latency_ms": {
+        "p50": 267.847,
+        "p95": 358.763,
+        "p99": 393.645,
+        "mean": 199.014
+      },
+      "attribute_calls": 2045,
+      "attribute_call_latency_ms": {
+        "p50": 53.371,
+        "mean": 54.795
+      }
+    }
+  },
+  "fps_degradation_pct": {
+    "per_track": 0.28,
+    "per_frame": 58.99
+  }
+}
