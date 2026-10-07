@@ -3,10 +3,14 @@ import pytest
 
 from src.attributes.color import (
     COLOR_BUCKETS,
+    adaptive_gamma_correct,
+    adaptive_gamma_correct_from_background,
+    apply_gamma,
     classify_hsv_pixel,
     classify_person_attributes,
     classify_person_attributes_with_mask,
     classify_person_attributes_with_mask_and_wb,
+    estimate_gamma_from_reference,
     region_color_signal,
     region_dominant_color,
     region_dominant_color_from_pixels,
@@ -328,3 +332,88 @@ class TestClassifyPersonAttributes:
     def test_unknown_method_raises(self):
         with pytest.raises(ValueError):
             classify_person_attributes(solid_bgr(RED), method="z")
+
+
+class TestEstimateGammaFromReference:
+    def test_bright_reference_gives_gamma_greater_than_one(self):
+        """평균 밝기가 target보다 높으면(과다 노출) 감마가 1보다 커야 한다(어둡게 보정)."""
+        bright = solid_bgr((220, 220, 220))
+        gamma = estimate_gamma_from_reference(bright, target_mean=128.0)
+        assert gamma > 1.0
+
+    def test_dark_reference_gives_gamma_less_than_one(self):
+        """평균 밝기가 target보다 낮으면(저노출) 감마가 1보다 작아야 한다(밝게 보정)."""
+        dark = solid_bgr((30, 30, 30))
+        gamma = estimate_gamma_from_reference(dark, target_mean=128.0)
+        assert gamma < 1.0
+
+    def test_mid_gray_reference_gives_gamma_near_one(self):
+        mid = solid_bgr((128, 128, 128))
+        gamma = estimate_gamma_from_reference(mid, target_mean=128.0)
+        assert abs(gamma - 1.0) < 0.05
+
+    def test_near_pure_black_reference_clips_instead_of_exploding(self):
+        """mean이 0에 가까우면 log(mean/255)가 0에 가까워져 감마가 무한히 커질 수 있다
+        (white_balance_gray_world의 gain_min/gain_max와 동일한 안전장치)."""
+        near_black = solid_bgr((1, 1, 1))
+        gamma = estimate_gamma_from_reference(near_black, target_mean=128.0, gamma_max=2.5)
+        assert gamma == 1.0  # mean<=1.0 가드에 걸려 보정 없음(원본 유지)
+
+    def test_empty_reference_returns_neutral_gamma(self):
+        assert estimate_gamma_from_reference(np.zeros((0, 0, 3), dtype=np.uint8)) == 1.0
+
+
+class TestApplyGamma:
+    def test_gamma_one_is_identity(self):
+        img = solid_bgr((100, 150, 200))
+        result = apply_gamma(img, 1.0)
+        assert np.array_equal(result, img)
+
+    def test_gamma_greater_than_one_darkens(self):
+        img = solid_bgr((200, 200, 200))
+        result = apply_gamma(img, 2.0)
+        assert result.mean() < img.mean()
+
+    def test_gamma_less_than_one_brightens(self):
+        img = solid_bgr((50, 50, 50))
+        result = apply_gamma(img, 0.5)
+        assert result.mean() > img.mean()
+
+    def test_empty_image_passthrough(self):
+        empty = np.zeros((0, 0, 3), dtype=np.uint8)
+        assert apply_gamma(empty, 1.5).size == 0
+
+
+class TestAdaptiveGammaCorrect:
+    def test_overexposed_crop_is_darkened_toward_target(self):
+        overexposed = solid_bgr((230, 230, 230))
+        corrected = adaptive_gamma_correct(overexposed, target_mean=128.0)
+        assert corrected.mean() < overexposed.mean()
+
+    def test_crop_self_brightness_confounds_true_black_clothing(self):
+        """EXP-030에서 기각된 핵심 이유를 고정하는 Regression Test: 실제로 어두운 옷
+        (낮은 V)을 입은 crop도 "노출 보정 대상"으로 취급돼 밝게 끌어올려진다 - crop
+        자신의 평균 밝기만으로는 "조명이 과다/저露출"과 "옷이 원래 검정색"을 구분할
+        수 없다는 confound를 직접 검증한다."""
+        true_black_clothing = solid_bgr((15, 15, 15))  # 정상 조명, 진짜 검정 옷
+        corrected = adaptive_gamma_correct(true_black_clothing, target_mean=128.0)
+        # 진짜 검정 옷인데도 평균 밝기가 target_mean 근처로 끌어올려져 더 이상 "검정"으로
+        # 분류되기 어려운 수준까지 밝아진다(VAL_BLACK=45보다 훨씬 커짐).
+        assert corrected.mean() > 45
+
+
+class TestAdaptiveGammaCorrectFromBackground:
+    def test_gamma_comes_from_background_not_crop(self):
+        """crop 자신은 어둡지만(진짜 검정 옷) 배경이 과다 노출이면, 배경 기준 감마가
+        crop에 적용돼 crop이 밝아진다 - 노출 추정을 crop 자신이 아니라 배경에서 가져오는
+        설계(EXP-030 대안 B)가 실제로 crop이 아닌 reference를 쓰는지 검증한다."""
+        dark_crop = solid_bgr((15, 15, 15))
+        overexposed_background = solid_bgr((230, 230, 230))
+        corrected = adaptive_gamma_correct_from_background(dark_crop, overexposed_background)
+        assert corrected.mean() < dark_crop.mean()  # 배경이 과다노출 -> 어둡게 보정
+
+    def test_normally_exposed_background_leaves_crop_unchanged(self):
+        dark_crop = solid_bgr((15, 15, 15))
+        normal_background = solid_bgr((128, 128, 128))
+        corrected = adaptive_gamma_correct_from_background(dark_crop, normal_background)
+        assert np.array_equal(corrected, dark_crop)

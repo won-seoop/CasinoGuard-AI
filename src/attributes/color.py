@@ -95,6 +95,85 @@ def white_balance_gray_world(crop_bgr: np.ndarray, gain_min: float = 0.3, gain_m
     return np.clip(corrected, 0, 255).astype(np.uint8)
 
 
+def estimate_gamma_from_reference(
+    reference_bgr: np.ndarray,
+    target_mean: float = 128.0,
+    gamma_min: float = 0.4,
+    gamma_max: float = 2.5,
+) -> float:
+    """reference_bgr의 평균 밝기를 target_mean으로 맞추는 감마 값을 추정한다
+    (표준 Auto-Exposure 기법): (mean/255)^gamma = target_mean/255 를 gamma에 대해 풀면
+    gamma = log(target_mean/255) / log(mean/255).
+
+    gamma_min/gamma_max: reference가 거의 순수 흑/백이면 mean이 0/255에 가까워 gamma가
+    극단적으로 커지거나 작아질 수 있어 안전 범위로 clip한다(white_balance_gray_world의
+    gain_min/gain_max와 동일한 이유).
+    """
+    if reference_bgr.size == 0:
+        return 1.0
+    mean = float(reference_bgr.astype(np.float32).mean())
+    if mean <= 1.0 or mean >= 254.0:
+        return 1.0
+    gamma = np.log(target_mean / 255.0) / np.log(mean / 255.0)
+    return float(np.clip(gamma, gamma_min, gamma_max))
+
+
+def apply_gamma(img_bgr: np.ndarray, gamma: float) -> np.ndarray:
+    """img_bgr 전체에 감마 보정(power law)을 적용한다."""
+    if img_bgr.size == 0:
+        return img_bgr
+    normalized = img_bgr.astype(np.float32) / 255.0
+    corrected = np.power(normalized, gamma) * 255.0
+    return np.clip(corrected, 0, 255).astype(np.uint8)
+
+
+def adaptive_gamma_correct(
+    crop_bgr: np.ndarray,
+    target_mean: float = 128.0,
+    gamma_min: float = 0.4,
+    gamma_max: float = 2.5,
+) -> np.ndarray:
+    """카지노 CCTV의 강한 조명/역광으로 생긴 노출 손실(과다/저노출)을 완화하려는 시도
+    (FC-012, EXP-030 대안 A - **기각됨**, strong_light 전용으로 설계).
+
+    EXP-026의 White Balance는 "채널 간 상대적 Cast"를 보정하지만, strong_light(EXP-025/027의
+    `img * 1.9 + 25`)는 모든 채널이 함께 밝아지는 전역 노출 문제라 WB로는 전혀 개선되지
+    않았다(PAR-017/PAR-019에서 실측: WB·Segmentation Mask 적용 후에도 GT=black→blue
+    오분류율이 오히려 18.2%→22.7%→27.3%로 악화). 이 함수는 crop 자신의 실측 평균 밝기로
+    감마를 추정해(estimate_gamma_from_reference) crop 자신에게 적용한다.
+
+    **EXP-030에서 기각된 이유(중요)**: crop(person bbox)의 평균 밝기는 "조명 노출"과
+    "옷 색상(albedo)"이 분리되지 않은 혼합 신호다 - 실측(coco128 n=21, normal 조명)에서
+    검정 옷 GT crop의 평균 밝기는 24.7~153.3까지 퍼져 있고 흰 옷 GT crop과 겹친다. crop
+    자신의 밝기를 target_mean(128)으로 강제로 맞추면 "검정 옷은 어둡다"는 분류 신호 자체를
+    지워버려, normal 조명에서도 Accuracy가 33.3%→9.5%로 급락했다(의도한 strong_light뿐
+    아니라 모든 조건이 악화). 노출은 object 자신이 아니라 주변 배경(Scene)에서 추정해야
+    한다는 결론을 얻었고, 그 방향은 adaptive_gamma_correct_from_background()로 별도
+    검증한다. 이 함수는 "crop 자체 밝기로 노출을 추정하면 안 된다"는 실패 사례를 보존하기
+    위해서만 남긴다(지침 38, 실패한 실험을 삭제하지 않는다).
+    """
+    gamma = estimate_gamma_from_reference(crop_bgr, target_mean, gamma_min, gamma_max)
+    return apply_gamma(crop_bgr, gamma)
+
+
+def adaptive_gamma_correct_from_background(
+    crop_bgr: np.ndarray,
+    background_bgr: np.ndarray,
+    target_mean: float = 128.0,
+    gamma_min: float = 0.4,
+    gamma_max: float = 2.5,
+) -> np.ndarray:
+    """EXP-030 대안 B(채택 여부 검증 대상): 노출(감마)을 crop 자신이 아니라 같은 Frame의
+    배경(person bbox 밖 영역)에서 추정해 crop에 적용한다.
+
+    adaptive_gamma_correct()가 기각된 이유(crop 자체 밝기는 옷 색상과 노출이 혼합된 신호)를
+    그대로 해결하려는 설계다 - 배경은 (대체로) 옷 색상과 무관하므로 배경의 평균 밝기가
+    target_mean에서 벗어난 정도가 더 순수하게 "이 Frame의 조명 노출"을 반영한다고 가정한다.
+    """
+    gamma = estimate_gamma_from_reference(background_bgr, target_mean, gamma_min, gamma_max)
+    return apply_gamma(crop_bgr, gamma)
+
+
 def whole_bbox_mean_color(crop_bgr: np.ndarray) -> str:
     """Baseline: bbox 전체 픽셀의 평균 BGR -> HSV 변환 -> 분류. 상/하의 구분 없음."""
     if crop_bgr.size == 0:
@@ -319,6 +398,32 @@ def classify_person_attributes(crop_bgr: np.ndarray, method: str = "b") -> dict[
         balanced = white_balance_gray_world(crop_bgr)
         upper, lower = split_upper_lower(
             balanced,
+            head_skip_ratio=0.22,
+            upper_end_ratio=0.55,
+            foot_skip_ratio=0.08,
+            side_margin_ratio=0.12,
+        )
+        return {"upper": region_dominant_color(upper), "lower": region_dominant_color(lower)}
+    if method == "b_gamma":
+        # EXP-030: method b 앞에 adaptive_gamma_correct를 추가한 실험용 변형.
+        # WB(b_wb)가 해결하지 못한 strong_light(전역 노출 과다)를 겨냥한다.
+        corrected = adaptive_gamma_correct(crop_bgr)
+        upper, lower = split_upper_lower(
+            corrected,
+            head_skip_ratio=0.22,
+            upper_end_ratio=0.55,
+            foot_skip_ratio=0.08,
+            side_margin_ratio=0.12,
+        )
+        return {"upper": region_dominant_color(upper), "lower": region_dominant_color(lower)}
+    if method == "b_wb_gamma":
+        # EXP-030: Gamma(노출 보정) 다음에 WB(채널 Cast 보정)를 순서대로 적용한 결합형.
+        # 두 보정이 서로 다른 원인(노출 vs 채널 Cast)을 겨냥하므로 순서를 Gamma -> WB로
+        # 고정한다(노출을 먼저 정상화해야 Gray World의 "전체 평균이 중립 회색"이라는
+        # 가정이 더 잘 맞는다).
+        corrected = white_balance_gray_world(adaptive_gamma_correct(crop_bgr))
+        upper, lower = split_upper_lower(
+            corrected,
             head_skip_ratio=0.22,
             upper_end_ratio=0.55,
             foot_skip_ratio=0.08,

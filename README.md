@@ -203,6 +203,19 @@ Detection+Tracking+BestShot이 매 프레임 도는 파이프라인에 연결했
 `update_attributes()`를 추가했다(VMS API 노출은 Accuracy가 아직 production 임계치에
 못 미쳐 계속 보류, `PAR-020`).
 
+### FC-012 strong_light 복원 시도 - Gamma Correction의 confound 발견 (Stretch, EXP-030, **PAR-021**)
+
+EXP-026(White Balance)/EXP-028(Segmentation Mask)로도 고쳐지지 않던 `strong_light`
+(검정 옷 → `blue` 오분류)를 Roadmap이 제안한 Gamma Correction으로 시도했다. crop 자신의
+평균 밝기로 감마를 추정하는 첫 구현(대안 A)은 "검정 옷은 어둡다"는 분류 신호 자체와
+"조명이 과다 노출"이라는 신호를 crop 하나로는 구분할 수 없다는 confound 때문에 목표
+지표조차 개선하지 못하고(18.2%→18.2%) 정상 조명 Accuracy를 33.3%→**9.5%**로 무너뜨렸다.
+감마를 crop이 아니라 같은 Frame의 배경(person bbox 밖 영역)에서 추정하는 대안 B로
+이 confound를 해결하자 `strong_light`의 목표 오분류율이 18.2%→**4.6%**(지금까지 측정된
+모든 방법 중 최저)까지 개선됐지만, 이 synthetic Benchmark의 전역 균일 조명 변형 특성상
+`low_light`에서 새 Regression(40.5%→4.8%)이 생겨 Overall Accuracy는 오히려 낮아졌다
+(26.2%→20.0%) — 두 결과 모두 그대로 기록하고 production 승격은 보류했다(`PAR-021`).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -228,7 +241,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 | FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
-| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. 미해결 유지 |
+| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. **EXP-030/PAR-021**: Gamma Correction 대안 A(crop 자체 밝기)는 confound로 전체 Accuracy 붕괴(기각), 대안 B(배경 기반)는 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선했으나 synthetic Benchmark 한계로 `low_light`에 새 Regression 발생. 네 가지 pixel-level 보정 모두 부분효과만 남아 미해결 유지, 다음 후보는 "구간 단위 낮은 신뢰도 표시" 설계 전환 |
 
 ## 14. 주요 기술 의사결정
 
@@ -259,6 +272,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-018**: n=5 평가 Dataset의 Attribute Accuracy(32~48%)를 coco128 실제 crop 21개로 재검증하니 15~32%로 하락(method 순위는 유지) → 작은 Dataset 수치를 "운영 가능한 성능"으로 재인용하지 않기로 함. 동시에 "무채색 확신도" fallback 설계 전에 후보 신호(채도/raw BGR std)의 achromatic/chromatic 분리도를 먼저 측정해 둘 다 분리되지 않음을 확인하고 구현을 보류(검증 없는 기능 추가 방지)
 - **PAR-019**: Attribute 색상 분류의 고정 비율 사각형 영역이 배경을 구조적으로 포함하는 문제 → person Segmentation Mask로 배경을 픽셀 단위 제외(대안 C)하니 White Balance 없이도 Overall Accuracy가 기존 최고(b_wb 32.4%)를 넘어 35.2%로 개선, 단 FC-012의 표적 실패(cool_cast 흑→blue)는 그대로임을 확인(50.0%, b_wb보다 나쁨) → Mask+WB 결합(c_wb)으로 Overall/GT=black Accuracy 최고치(38.1%/55.5%) 달성하면서 cool_cast 오분류율도 b_wb 수준 유지(두 기법이 독립적인 원인을 해결함을 실측으로 확인)
 - **PAR-020**: Attribute 분류를 실시간 파이프라인에 연결할 때 호출 빈도를 검증 없이 정하면 위험하다는 것을 매 프레임 호출(대안 A)의 실측 FPS 저하(10.68→4.38, -59.0%)로 먼저 확인 → BestShot 확정 시점에 Track당 1회만 호출하는 방식(대안 B)으로 `run_full_pipeline.py`에 실제로 연결해 FPS 저하를 0.28%로 줄임(Attribute 호출 수 2045→16, 900프레임 기준)
+- **PAR-021**: FC-012(`strong_light`) 복원을 위해 crop 자신의 밝기로 Gamma를 추정하는 대안 A를 구현했더니, "검정 옷은 어둡다"는 분류 신호와 "조명이 과다 노출"이라는 신호가 crop 하나로는 분리되지 않는 confound 때문에 목표 지표도 개선 못 하고 정상 조명 Accuracy까지 33.3%→9.5%로 붕괴(기각) → 감마를 crop이 아니라 같은 Frame의 배경에서 추정하는 대안 B로 confound를 해결해 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선, 단 synthetic Benchmark의 전역 균일 조명 특성상 `low_light`에 새 Regression이 생겨 Overall은 b보다 낮음을 그대로 기록(production 승격 보류)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -330,6 +344,7 @@ python scripts/run_exp026_fc012_white_balance.py                 # FC-012 재현
 python scripts/run_exp027_attribute_coco128.py                   # coco128 기반 n 확장 재검증 + 무채색 신호 분리도 분석 (PAR-018)
 python scripts/run_exp028_attribute_segmentation_mask.py         # Segmentation Mask 기반 영역 분리 대안 C + Mask/WB 결합 (PAR-019)
 python scripts/run_exp029_attribute_pipeline_integration.py      # Attribute 실시간 통합 호출 빈도 A(매 프레임)/B(Track당 1회) 비교 (PAR-020)
+python scripts/run_exp030_attribute_gamma_correction.py          # FC-012 strong_light Gamma Correction A(crop 자체)/B(배경 기반) 비교 (PAR-021)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
