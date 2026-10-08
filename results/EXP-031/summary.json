@@ -1,0 +1,126 @@
+{
+  "n_ground_truth_crops": 21,
+  "n_unique_images": 17,
+  "normal_condition_frame_brightness": {
+    "mean": 107.35,
+    "std": 25.11,
+    "min": 52.69,
+    "max": 164.86,
+    "p10": 80.96,
+    "p90": 130.81
+  },
+  "thresholds": {
+    "alt_a_fixed_heuristic": {
+      "low": 85.0,
+      "high": 170.0
+    },
+    "alt_b_dataset_calibrated": {
+      "low": 80.96,
+      "high": 130.81
+    }
+  },
+  "cast_threshold_p90": 0.3604,
+  "baseline_no_flagging": {
+    "accuracy": 0.2619,
+    "total_cells": 210,
+    "gt_black_accuracy": 0.3909,
+    "gt_black_total_cells": 110
+  },
+  "alt_a_fixed_heuristic": {
+    "flagged_rate": 0.4667,
+    "flagged_rate_by_condition": {
+      "normal": 0.0952,
+      "low_light": 1.0,
+      "strong_light": 0.8571,
+      "warm_cast": 0.1429,
+      "cool_cast": 0.2381
+    },
+    "unflagged_subset": {
+      "accuracy": 0.2232,
+      "total_cells": 112,
+      "gt_black_accuracy": 0.322,
+      "gt_black_total_cells": 59
+    },
+    "flagged_subset": {
+      "accuracy": 0.3061,
+      "total_cells": 98,
+      "gt_black_accuracy": 0.4706,
+      "gt_black_total_cells": 51
+    },
+    "unflagged_subset_condition_composition_cells": {
+      "normal": 19,
+      "low_light": 0,
+      "strong_light": 3,
+      "warm_cast": 18,
+      "cool_cast": 16
+    },
+    "level_counts": {
+      "normal": 56,
+      "low_light": 29,
+      "strong_light": 20
+    }
+  },
+  "alt_b_dataset_calibrated": {
+    "flagged_rate": 0.6571,
+    "flagged_rate_by_condition": {
+      "normal": 0.2857,
+      "low_light": 1.0,
+      "strong_light": 0.9048,
+      "warm_cast": 0.5714,
+      "cool_cast": 0.5238
+    },
+    "unflagged_subset": {
+      "accuracy": 0.1528,
+      "total_cells": 72,
+      "gt_black_accuracy": 0.2188,
+      "gt_black_total_cells": 32
+    },
+    "flagged_subset": {
+      "accuracy": 0.3188,
+      "total_cells": 138,
+      "gt_black_accuracy": 0.4615,
+      "gt_black_total_cells": 78
+    },
+    "unflagged_subset_condition_composition_cells": {
+      "normal": 15,
+      "low_light": 0,
+      "strong_light": 2,
+      "warm_cast": 9,
+      "cool_cast": 10
+    },
+    "level_counts": {
+      "normal": 36,
+      "low_light": 29,
+      "strong_light": 40
+    }
+  },
+  "alt_c_combined": {
+    "flagged_rate": 0.7524,
+    "flagged_rate_by_condition": {
+      "normal": 0.4286,
+      "low_light": 1.0,
+      "strong_light": 0.9048,
+      "warm_cast": 0.9048,
+      "cool_cast": 0.5238
+    },
+    "unflagged_subset": {
+      "accuracy": 0.1154,
+      "total_cells": 52,
+      "gt_black_accuracy": 0.1818,
+      "gt_black_total_cells": 22
+    },
+    "flagged_subset": {
+      "accuracy": 0.3101,
+      "total_cells": 158,
+      "gt_black_accuracy": 0.4432,
+      "gt_black_total_cells": 88
+    },
+    "unflagged_subset_condition_composition_cells": {
+      "normal": 12,
+      "low_light": 0,
+      "strong_light": 2,
+      "warm_cast": 2,
+      "cool_cast": 10
+    }
+  }
+}

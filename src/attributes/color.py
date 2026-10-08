@@ -266,6 +266,69 @@ def region_dominant_color(
     return classify_hsv_pixel(float(med_h), float(med_s), float(med_v))
 
 
+def frame_mean_brightness(frame_bgr: np.ndarray) -> float:
+    """Frame 전체(HSV V 채널)의 평균 밝기 (EXP-031, FC-012 Next Action: pixel-level 보정
+    대신 "구간 단위 낮은 신뢰도 표시"로의 설계 전환).
+
+    EXP-030의 adaptive_gamma_correct()가 기각된 이유는 person crop 자신의 평균 밝기가
+    "옷 색상"과 "조명 노출"이 섞인 신호였기 때문이다(검정 옷과 흰 옷의 crop 밝기 범위가
+    겹침). 이 함수는 crop이 아니라 Frame 전체(배경+모든 object 포함)의 밝기를 재는 것이라
+    같은 confound가 생기지 않는다 - Frame 전체가 특정 한 사람의 옷 색상에 좌우되지
+    않으므로, "이 Frame이 관측된 순간의 조명 노출 수준"을 더 순수하게 반영한다.
+
+    **EXP-031에서 "Accuracy를 예측하는 신호로는 기각"됨(중요)**: confound가 없다는
+    가정은 맞았지만(위 설명), 실측 결과 이 신호로 낮은 신뢰도를 표시한 구간(flagged)의
+    Accuracy가 오히려 표시하지 않은 구간(unflagged)보다 높았다(coco128 n=21,
+    Alt A 22.3%<30.6%, Alt B 15.3%<31.9%) - 정반대 방향이다. 원인은 method "b"
+    분류기의 실제 실패가 노출(밝기) 문제보다 warm_cast/cool_cast(채널 Cast, 밝기는
+    거의 안 변함) 문제에 더 크게 좌우되기 때문이다(PAR-022 참고). 이 함수 자체(Frame
+    밝기 측정)는 올바르게 동작하지만, "밝기 편차 = 낮은 신뢰도"라는 가정이 이
+    classifier에는 맞지 않았다 - 다른 목적(예: 노출 자체를 보정하는 EXP-030의
+    배경 기반 Gamma)에는 여전히 유효하게 쓰인다.
+    """
+    if frame_bgr.size == 0:
+        return 0.0
+    v = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)[:, :, 2]
+    return float(v.mean())
+
+
+def classify_exposure_level(mean_v: float, low_threshold: float, high_threshold: float) -> str:
+    """Frame 평균 밝기(mean_v)를 "low_light"/"strong_light"/"normal" 중 하나로 분류한다.
+
+    low_threshold/high_threshold는 임의로 정하지 않고 실제 Dataset의 밝기 분포를 측정해
+    정의해야 한다(지침 22와 동일 원칙 - EXP-031 참고). 이 함수 자체는 순수 함수로 유지해
+    Threshold 값(Alt A 고정값 vs Alt B Dataset 기반 값)을 자유롭게 바꿔 비교할 수 있게 한다.
+    """
+    if mean_v < low_threshold:
+        return "low_light"
+    if mean_v > high_threshold:
+        return "strong_light"
+    return "normal"
+
+
+def frame_channel_cast_deviation(frame_bgr: np.ndarray) -> float:
+    """Frame 전체 채널 평균이 중립 회색(B=G=R)에서 벗어난 정도 (EXP-031, Alt C: exposure
+    신호[frame_mean_brightness]만으로는 FC-012의 warm_cast/cool_cast(채널 Cast)류
+    실패를 포착하지 못해 추가한 보조 신호). white_balance_gray_world의 게인 계산과
+    동일한 가정(Gray World)을 쓰되, 보정이 아니라 "이 Frame이 Cast가 심한가"를 재는
+    측정값만 반환한다.
+
+    **EXP-031에서 조건별 분리도를 실측한 결과(기각)**: 실제 COCO 사진은 합성 조명을
+    가하지 않은 normal 조건에서도 이미 채널 편차가 크고 넓게 퍼져 있어(normal
+    mean=0.173, std=0.138, cool_cast mean=0.206과 거의 겹침) normal과 cool_cast를
+    분리하지 못했다. exposure 신호와 결합(Alt C)해도 Accuracy를 예측하는 데 도움이
+    되지 않았다(PAR-022 참고). 실패 사례 보존을 위해 함수는 남긴다(지침 38).
+    """
+    if frame_bgr.size == 0:
+        return 0.0
+    channel_means = frame_bgr.astype(np.float32).reshape(-1, 3).mean(axis=0)
+    overall_mean = channel_means.mean()
+    if overall_mean < 1e-6:
+        return 0.0
+    deviation = np.abs(channel_means - overall_mean) / overall_mean
+    return float(deviation.max())
+
+
 def region_color_signal(region_bgr: np.ndarray) -> dict[str, float]:
     """영역의 raw HSV 채도(S)와 raw BGR 채널 표준편차 평균을 계산한다.
 

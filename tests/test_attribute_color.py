@@ -6,11 +6,14 @@ from src.attributes.color import (
     adaptive_gamma_correct,
     adaptive_gamma_correct_from_background,
     apply_gamma,
+    classify_exposure_level,
     classify_hsv_pixel,
     classify_person_attributes,
     classify_person_attributes_with_mask,
     classify_person_attributes_with_mask_and_wb,
     estimate_gamma_from_reference,
+    frame_channel_cast_deviation,
+    frame_mean_brightness,
     region_color_signal,
     region_dominant_color,
     region_dominant_color_from_pixels,
@@ -417,3 +420,61 @@ class TestAdaptiveGammaCorrectFromBackground:
         normal_background = solid_bgr((128, 128, 128))
         corrected = adaptive_gamma_correct_from_background(dark_crop, normal_background)
         assert np.array_equal(corrected, dark_crop)
+
+
+class TestFrameMeanBrightness:
+    """EXP-031: Frame 전체(crop 아님) 밝기 측정 - adaptive_gamma_correct의 confound
+    (crop 밝기 = 옷 색상 + 조명 노출 혼합)가 생기지 않는지 확인한다."""
+
+    def test_dark_frame_has_low_mean_brightness(self):
+        dark_frame = solid_bgr((20, 20, 20), h=200, w=300)
+        assert frame_mean_brightness(dark_frame) < 45
+
+    def test_bright_frame_has_high_mean_brightness(self):
+        bright_frame = solid_bgr((230, 230, 230), h=200, w=300)
+        assert frame_mean_brightness(bright_frame) > 200
+
+    def test_not_confounded_by_a_single_dark_person_in_a_bright_scene(self):
+        """crop 자체 밝기(adaptive_gamma_correct가 기각된 원인)와 달리, Frame 전체
+        밝기는 한 사람의 옷 색상(일부 영역)만으로 좌우되지 않는다 - 밝은 배경 안의
+        작은 검정 옷 영역은 Frame 전체 평균을 크게 끌어내리지 않는다."""
+        frame = solid_bgr((230, 230, 230), h=200, w=300)
+        frame[80:120, 100:140] = (15, 15, 15)  # 작은 검정 옷 person 영역
+        assert frame_mean_brightness(frame) > 200
+
+    def test_empty_frame_returns_zero(self):
+        empty = np.zeros((0, 0, 3), dtype=np.uint8)
+        assert frame_mean_brightness(empty) == 0.0
+
+
+class TestClassifyExposureLevel:
+    def test_below_low_threshold_is_low_light(self):
+        assert classify_exposure_level(40.0, low_threshold=80.0, high_threshold=130.0) == "low_light"
+
+    def test_above_high_threshold_is_strong_light(self):
+        assert classify_exposure_level(200.0, low_threshold=80.0, high_threshold=130.0) == "strong_light"
+
+    def test_within_band_is_normal(self):
+        assert classify_exposure_level(100.0, low_threshold=80.0, high_threshold=130.0) == "normal"
+
+    def test_boundary_values_are_inclusive_of_normal(self):
+        assert classify_exposure_level(80.0, low_threshold=80.0, high_threshold=130.0) == "normal"
+        assert classify_exposure_level(130.0, low_threshold=80.0, high_threshold=130.0) == "normal"
+
+
+class TestFrameChannelCastDeviation:
+    """EXP-031 Alt C(기각): warm_cast/cool_cast를 겨냥해 추가했으나 normal 조건
+    자체의 편차 분포와 거의 겹쳐 분리되지 않음(실측은 EXP-031 summary.json 참고).
+    여기서는 함수 자체의 계산이 올바른지(메커니즘)만 검증한다."""
+
+    def test_neutral_gray_frame_has_zero_deviation(self):
+        neutral = solid_bgr((128, 128, 128), h=100, w=100)
+        assert frame_channel_cast_deviation(neutral) == pytest.approx(0.0, abs=1e-6)
+
+    def test_strong_blue_cast_has_high_deviation(self):
+        blue_cast = solid_bgr((230, 80, 80), h=100, w=100)  # B channel much higher
+        assert frame_channel_cast_deviation(blue_cast) > 0.3
+
+    def test_empty_frame_returns_zero(self):
+        empty = np.zeros((0, 0, 3), dtype=np.uint8)
+        assert frame_channel_cast_deviation(empty) == 0.0
