@@ -1,0 +1,370 @@
+{
+  "original": {
+    "n_base_black_cells": 22,
+    "n_cells_per_method": 110,
+    "methods": {
+      "b": {
+        "accuracy": 0.3909,
+        "total_cells": 110,
+        "n_misclassified": 67,
+        "n_fallback_misclassified": 27,
+        "n_filtered_misclassified": 40,
+        "pred_color_dist_when_wrong": {
+          "white": 3,
+          "gray": 12,
+          "orange": 14,
+          "blue": 20,
+          "red": 13,
+          "green": 3,
+          "yellow": 1,
+          "pink": 1
+        },
+        "n_narrow_margin_misclassified": 13,
+        "narrow_margin_fraction_of_errors": 0.194,
+        "accuracy_by_condition": {
+          "normal": {
+            "accuracy": 0.5455,
+            "n_misclassified": 10,
+            "mean_median_v_when_wrong": 102.8,
+            "mean_median_s_when_wrong": 96.0,
+            "pred_color_dist_when_wrong": {
+              "white": 1,
+              "blue": 1,
+              "red": 3,
+              "green": 1,
+              "orange": 2,
+              "gray": 2
+            }
+          },
+          "low_light": {
+            "accuracy": 0.7727,
+            "n_misclassified": 5,
+            "mean_median_v_when_wrong": 61.4,
+            "mean_median_s_when_wrong": 83.8,
+            "pred_color_dist_when_wrong": {
+              "gray": 1,
+              "blue": 1,
+              "orange": 2,
+              "red": 1
+            }
+          },
+          "strong_light": {
+            "accuracy": 0.0909,
+            "n_misclassified": 20,
+            "mean_median_v_when_wrong": 117.4,
+            "mean_median_s_when_wrong": 42.1,
+            "pred_color_dist_when_wrong": {
+              "white": 2,
+              "gray": 9,
+              "blue": 4,
+              "green": 1,
+              "red": 2,
+              "pink": 1,
+              "orange": 1
+            }
+          },
+          "warm_cast": {
+            "accuracy": 0.2727,
+            "n_misclassified": 16,
+            "mean_median_v_when_wrong": 79.5,
+            "mean_median_s_when_wrong": 144.6,
+            "pred_color_dist_when_wrong": {
+              "orange": 9,
+              "blue": 1,
+              "yellow": 1,
+              "red": 5
+            }
+          },
+          "cool_cast": {
+            "accuracy": 0.2727,
+            "n_misclassified": 16,
+            "mean_median_v_when_wrong": 108.4,
+            "mean_median_s_when_wrong": 112.6,
+            "pred_color_dist_when_wrong": {
+              "blue": 13,
+              "green": 1,
+              "red": 2
+            }
+          }
+        }
+      },
+      "c_wb": {
+        "accuracy": 0.5545,
+        "total_cells": 110,
+        "n_misclassified": 49,
+        "n_fallback_misclassified": 17,
+        "n_filtered_misclassified": 32,
+        "pred_color_dist_when_wrong": {
+          "white": 5,
+          "gray": 13,
+          "blue": 22,
+          "red": 8,
+          "purple": 1
+        },
+        "n_narrow_margin_misclassified": 10,
+        "narrow_margin_fraction_of_errors": 0.2041,
+        "accuracy_by_condition": {
+          "normal": {
+            "accuracy": 0.5909,
+            "n_misclassified": 9,
+            "mean_median_v_when_wrong": 82.8,
+            "mean_median_s_when_wrong": 74.9,
+            "pred_color_dist_when_wrong": {
+              "white": 1,
+              "blue": 5,
+              "red": 2,
+              "gray": 1
+            }
+          },
+          "low_light": {
+            "accuracy": 0.9091,
+            "n_misclassified": 2,
+            "mean_median_v_when_wrong": 79.5,
+            "mean_median_s_when_wrong": 36.5,
+            "pred_color_dist_when_wrong": {
+              "gray": 1,
+              "blue": 1
+            }
+          },
+          "strong_light": {
+            "accuracy": 0.1818,
+            "n_misclassified": 18,
+            "mean_median_v_when_wrong": 101.2,
+            "mean_median_s_when_wrong": 37.0,
+            "pred_color_dist_when_wrong": {
+              "white": 2,
+              "blue": 6,
+              "gray": 7,
+              "red": 2,
+              "purple": 1
+            }
+          },
+          "warm_cast": {
+            "accuracy": 0.5455,
+            "n_misclassified": 10,
+            "mean_median_v_when_wrong": 80.8,
+            "mean_median_s_when_wrong": 76.5,
+            "pred_color_dist_when_wrong": {
+              "white": 1,
+              "blue": 5,
+              "gray": 2,
+              "red": 2
+            }
+          },
+          "cool_cast": {
+            "accuracy": 0.5455,
+            "n_misclassified": 10,
+            "mean_median_v_when_wrong": 89.3,
+            "mean_median_s_when_wrong": 74.4,
+            "pred_color_dist_when_wrong": {
+              "white": 1,
+              "blue": 5,
+              "gray": 2,
+              "red": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "gt_corrected": {
+    "n_base_black_cells": 20,
+    "n_cells_per_method": 100,
+    "methods": {
+      "b": {
+        "accuracy": 0.42,
+        "total_cells": 100,
+        "n_misclassified": 58,
+        "n_fallback_misclassified": 19,
+        "n_filtered_misclassified": 39,
+        "pred_color_dist_when_wrong": {
+          "gray": 9,
+          "orange": 12,
+          "blue": 18,
+          "red": 13,
+          "green": 3,
+          "yellow": 1,
+          "white": 1,
+          "pink": 1
+        },
+        "n_narrow_margin_misclassified": 13,
+        "narrow_margin_fraction_of_errors": 0.2241,
+        "accuracy_by_condition": {
+          "normal": {
+            "accuracy": 0.6,
+            "n_misclassified": 8,
+            "mean_median_v_when_wrong": 95.4,
+            "mean_median_s_when_wrong": 120.0,
+            "pred_color_dist_when_wrong": {
+              "blue": 1,
+              "red": 3,
+              "green": 1,
+              "orange": 2,
+              "gray": 1
+            }
+          },
+          "low_light": {
+            "accuracy": 0.8,
+            "n_misclassified": 4,
+            "mean_median_v_when_wrong": 58.5,
+            "mean_median_s_when_wrong": 104.8,
+            "pred_color_dist_when_wrong": {
+              "blue": 1,
+              "orange": 2,
+              "red": 1
+            }
+          },
+          "strong_light": {
+            "accuracy": 0.1,
+            "n_misclassified": 18,
+            "mean_median_v_when_wrong": 109.2,
+            "mean_median_s_when_wrong": 46.8,
+            "pred_color_dist_when_wrong": {
+              "gray": 8,
+              "blue": 4,
+              "green": 1,
+              "red": 2,
+              "white": 1,
+              "pink": 1,
+              "orange": 1
+            }
+          },
+          "warm_cast": {
+            "accuracy": 0.3,
+            "n_misclassified": 14,
+            "mean_median_v_when_wrong": 67.8,
+            "mean_median_s_when_wrong": 149.4,
+            "pred_color_dist_when_wrong": {
+              "orange": 7,
+              "blue": 1,
+              "yellow": 1,
+              "red": 5
+            }
+          },
+          "cool_cast": {
+            "accuracy": 0.3,
+            "n_misclassified": 14,
+            "mean_median_v_when_wrong": 98.6,
+            "mean_median_s_when_wrong": 113.3,
+            "pred_color_dist_when_wrong": {
+              "blue": 11,
+              "green": 1,
+              "red": 2
+            }
+          }
+        }
+      },
+      "c_wb": {
+        "accuracy": 0.6,
+        "total_cells": 100,
+        "n_misclassified": 40,
+        "n_fallback_misclassified": 8,
+        "n_filtered_misclassified": 32,
+        "pred_color_dist_when_wrong": {
+          "blue": 22,
+          "gray": 8,
+          "red": 8,
+          "white": 1,
+          "purple": 1
+        },
+        "n_narrow_margin_misclassified": 10,
+        "narrow_margin_fraction_of_errors": 0.25,
+        "accuracy_by_condition": {
+          "normal": {
+            "accuracy": 0.65,
+            "n_misclassified": 7,
+            "mean_median_v_when_wrong": 68.9,
+            "mean_median_s_when_wrong": 96.3,
+            "pred_color_dist_when_wrong": {
+              "blue": 5,
+              "red": 2
+            }
+          },
+          "low_light": {
+            "accuracy": 0.95,
+            "n_misclassified": 1,
+            "mean_median_v_when_wrong": 84.0,
+            "mean_median_s_when_wrong": 73.0,
+            "pred_color_dist_when_wrong": {
+              "blue": 1
+            }
+          },
+          "strong_light": {
+            "accuracy": 0.2,
+            "n_misclassified": 16,
+            "mean_median_v_when_wrong": 90.9,
+            "mean_median_s_when_wrong": 41.6,
+            "pred_color_dist_when_wrong": {
+              "blue": 6,
+              "gray": 6,
+              "red": 2,
+              "white": 1,
+              "purple": 1
+            }
+          },
+          "warm_cast": {
+            "accuracy": 0.6,
+            "n_misclassified": 8,
+            "mean_median_v_when_wrong": 66.9,
+            "mean_median_s_when_wrong": 92.0,
+            "pred_color_dist_when_wrong": {
+              "blue": 5,
+              "gray": 1,
+              "red": 2
+            }
+          },
+          "cool_cast": {
+            "accuracy": 0.6,
+            "n_misclassified": 8,
+            "mean_median_v_when_wrong": 77.2,
+            "mean_median_s_when_wrong": 89.5,
+            "pred_color_dist_when_wrong": {
+              "blue": 5,
+              "gray": 1,
+              "red": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "gt_correction_impact": {
+    "gt_corrections_applied": [
+      {
+        "name": "000000000086_0",
+        "region": "upper",
+        "old": "black",
+        "new": "white",
+        "reason": "B&W 모터사이클 사진. 주석은 '어두운 자켓'이라 적었지만 results/EXP-032/crops/000000000086_0.jpg를 육안 확인하면 남성은 밝은 크림색 드레스셔츠를 입고 있다(검정은 하의뿐). 상의 GT를 white로 교정."
+      },
+      {
+        "name": "000000000634_0",
+        "region": "upper",
+        "old": "black",
+        "new": "gray",
+        "reason": "그레이스케일 스케이트보더 사진. 주석은 '그레이스케일 스케이트보더'(옷 색상 미언급)로만 적혀 상/하의 모두 black으로 라벨링됐지만, crops/000000000634_0.jpg를 육안 확인하면 상의는 연회색 티셔츠, 하의만 검정 반바지다. 상의 GT를 gray로 교정."
+      }
+    ],
+    "n_cells_corrected": 2,
+    "original": {
+      "b": {
+        "accuracy": 0.3909,
+        "normal_condition_accuracy": 0.5455
+      },
+      "c_wb": {
+        "accuracy": 0.5545,
+        "normal_condition_accuracy": 0.5909
+      }
+    },
+    "gt_corrected": {
+      "b": {
+        "accuracy": 0.42,
+        "normal_condition_accuracy": 0.6
+      },
+      "c_wb": {
+        "accuracy": 0.6,
+        "normal_condition_accuracy": 0.65
+      }
+    }
+  }
+}

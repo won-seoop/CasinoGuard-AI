@@ -11,11 +11,14 @@ from src.attributes.color import (
     classify_person_attributes,
     classify_person_attributes_with_mask,
     classify_person_attributes_with_mask_and_wb,
+    classify_person_attributes_with_mask_and_wb_diagnostic,
+    classify_person_attributes_with_mask_diagnostic,
     estimate_gamma_from_reference,
     frame_channel_cast_deviation,
     frame_mean_brightness,
     region_color_signal,
     region_dominant_color,
+    region_dominant_color_diagnostic,
     region_dominant_color_from_pixels,
     region_mean_color,
     split_upper_lower,
@@ -150,6 +153,57 @@ class TestRegionDominantColor:
         # 피부색 전체 영역에서 skin 필터를 켜면 걸러낼 픽셀이 없어 완화 단계로 fallback
         result = region_dominant_color(img, exclude_skin=True)
         assert result in COLOR_BUCKETS
+
+
+class TestRegionDominantColorDiagnostic:
+    """EXP-032 (Error Analysis): region_dominant_color_diagnostic이 region_dominant_color와
+    동일한 최종 색상을 내면서, 중간값(fallback 여부/margin)도 올바르게 보고하는지 검증한다.
+    region_dominant_color 자체는 이 진단 함수를 감싸는 thin wrapper로 리팩터링했으므로
+    (동작 비변경, 기존 TestRegionDominantColor 전부 통과로 확인), 여기서는 진단 전용
+    필드만 추가로 검증한다."""
+
+    def test_color_matches_non_diagnostic_function(self):
+        img = solid_bgr(RED, h=100, w=100)
+        diag = region_dominant_color_diagnostic(img)
+        assert diag["color"] == region_dominant_color(img) == "red"
+
+    def test_solid_region_has_no_runner_up_and_full_margin(self):
+        """단색 영역은 Hue bin이 하나뿐이므로 runner_up이 없어야 한다(동전 던지기가
+        아니라 완전히 확정적인 다수결이라는 신호)."""
+        img = solid_bgr(RED, h=50, w=50)
+        diag = region_dominant_color_diagnostic(img)
+        assert diag["runner_up_bin"] is None
+        assert diag["runner_up_bin_count"] == 0
+        assert diag["used_fallback"] is False
+        assert diag["filtered_fraction"] == pytest.approx(1.0)
+
+    def test_all_shadow_reports_fallback_used(self):
+        """EXP-032가 실측에서 발견한 핵심 경로: 필터 통과 픽셀이 거의 없으면(진짜 검정)
+        used_fallback=True로 명시적으로 보고해야 한다 - region_dominant_color는 이
+        신호를 버리고 색상만 반환하므로, 어떤 예측이 fallback 경로에서 나왔는지는 이
+        진단 함수로만 구분할 수 있다."""
+        img = solid_bgr((5, 5, 5), h=50, w=50)
+        diag = region_dominant_color_diagnostic(img)
+        assert diag["used_fallback"] is True
+        assert diag["filtered_fraction"] == pytest.approx(0.0)
+        assert diag["color"] == "black"
+
+    def test_empty_region_defaults_to_gray_without_crashing(self):
+        diag = region_dominant_color_diagnostic(np.zeros((0, 0, 3), dtype=np.uint8))
+        assert diag["color"] == "gray"
+        assert diag["used_fallback"] is False
+        assert diag["dominant_bin"] is None
+
+    def test_narrow_margin_reported_for_evenly_split_hues(self):
+        """두 Hue bin이 거의 동률로 나뉘면 margin이 좁다는 것을 runner_up_bin_count로
+        확인할 수 있어야 한다(다수결이 "거의 동전 던지기"였다는 EXP-032의 분석 지표)."""
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        img[:50, :] = RED
+        img[50:, :] = GREEN
+        diag = region_dominant_color_diagnostic(img)
+        assert diag["runner_up_bin_count"] is not None and diag["runner_up_bin_count"] > 0
+        margin = diag["dominant_bin_count"] / (diag["dominant_bin_count"] + diag["runner_up_bin_count"])
+        assert margin == pytest.approx(0.5, abs=0.05)
 
 
 class TestWhiteBalanceGrayWorld:
@@ -302,6 +356,55 @@ class TestClassifyPersonAttributesWithMask:
             np.zeros((0, 0, 3), dtype=np.uint8), np.zeros((0, 0), dtype=bool)
         )
         assert result == {"upper": "gray", "lower": "gray"}
+
+
+class TestClassifyPersonAttributesWithMaskDiagnostic:
+    """EXP-032: classify_person_attributes_with_mask_diagnostic이 production(c_wb)이
+    실제로 마스크를 썼는지 사각형 폴백을 썼는지(used_mask)를 region별로 올바르게
+    구분해서 보고하는지 검증한다."""
+
+    def test_color_matches_non_diagnostic_function_when_mask_used(self):
+        img = solid_bgr(RED, h=100, w=100)
+        img[:, 40:60] = BLUE
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[:, 40:60] = True
+
+        plain = classify_person_attributes_with_mask(img, mask)
+        diag = classify_person_attributes_with_mask_diagnostic(img, mask)
+        assert diag["upper"]["color"] == plain["upper"] == "blue"
+        assert diag["lower"]["color"] == plain["lower"] == "blue"
+        assert diag["upper"]["used_mask"] is True
+        assert diag["lower"]["used_mask"] is True
+
+    def test_used_mask_false_when_mask_fraction_too_low(self):
+        img = solid_bgr(GREEN, h=100, w=100)
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[0, 0] = True  # 거의 비어 있는 마스크 -> 사각형 폴백으로 되돌아가야 함
+        diag = classify_person_attributes_with_mask_diagnostic(img, mask, min_mask_fraction=0.05)
+        assert diag["upper"]["used_mask"] is False
+        assert diag["lower"]["used_mask"] is False
+        assert diag["upper"]["color"] == "green"
+
+    def test_empty_crop_defaults_to_gray_without_crashing(self):
+        diag = classify_person_attributes_with_mask_diagnostic(
+            np.zeros((0, 0, 3), dtype=np.uint8), np.zeros((0, 0), dtype=bool)
+        )
+        assert diag["upper"]["color"] == "gray"
+        assert diag["lower"]["color"] == "gray"
+
+
+class TestClassifyPersonAttributesWithMaskAndWbDiagnostic:
+    def test_matches_non_diagnostic_wb_function(self):
+        img = solid_bgr(RED, h=100, w=100)
+        img[:, 40:60] = BLUE
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[:, 40:60] = True
+
+        plain = classify_person_attributes_with_mask_and_wb(img, mask)
+        diag = classify_person_attributes_with_mask_and_wb_diagnostic(img, mask)
+        assert diag["upper"]["color"] == plain["upper"]
+        assert diag["lower"]["color"] == plain["lower"]
+        assert diag["upper"]["used_mask"] is True
 
 
 class TestClassifyPersonAttributesWithMaskAndWb:

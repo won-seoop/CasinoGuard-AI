@@ -222,6 +222,80 @@ def _is_skin_like(h: np.ndarray, s: np.ndarray, v: np.ndarray) -> np.ndarray:
     return (h <= 25) & (s >= 40) & (s <= 150) & (v >= 60)
 
 
+def region_dominant_color_diagnostic(
+    region_bgr: np.ndarray,
+    sat_min: int = 25,
+    val_min: int = 35,
+    val_max: int = 245,
+    hue_bin_width: int = 10,
+    exclude_skin: bool = True,
+    min_filtered_fraction: float = 0.3,
+) -> dict:
+    """대안 B(채택) 로직의 진단 버전 (EXP-032, Error Analysis). region_dominant_color와
+    완전히 동일한 필터링+Hue 다수결을 수행하지만, 최종 색상 하나만 반환하는 대신
+    "왜 이 색이 나왔는가"를 설명하는 중간값(어떤 필터가 발동했는지, 다수결 1/2위 Hue
+    bin이 얼마나 차이나는지)을 함께 반환한다. region_dominant_color는 이 함수를 감싸는
+    thin wrapper로 리팩터링해 로직 중복을 피했다(동작은 100% 동일, 기존 테스트가 그대로
+    통과함으로 확인).
+
+    반환 dict:
+    - color: region_dominant_color()와 동일한 최종 예측.
+    - used_fallback: True면 필터 통과 픽셀이 min_filtered_fraction보다 적어 필터를
+      버리고 원본 전체 픽셀로 되돌아갔다(EXP-025가 발견한 "진짜 검정 옷이 필터에 전부
+      걸림" 패턴과 같은 경로).
+    - filtered_fraction: 필터 통과 픽셀 비율(0~1).
+    - dominant_bin / dominant_bin_count / runner_up_bin / runner_up_bin_count:
+      Hue 다수결 1위/2위 bin과 그 픽셀 수(그 둘의 격차가 작으면 다수결이 불안정하다는
+      신호).
+    - median_h / median_s / median_v: 다수결 bin의 대표 HSV(최종 분류에 실제로 쓰인 값).
+    """
+    if region_bgr.size == 0:
+        return {
+            "color": "gray",
+            "used_fallback": False,
+            "filtered_fraction": 0.0,
+            "dominant_bin": None,
+            "dominant_bin_count": 0,
+            "runner_up_bin": None,
+            "runner_up_bin_count": 0,
+            "median_h": None,
+            "median_s": None,
+            "median_v": None,
+        }
+    hsv = _to_hsv(region_bgr).reshape(-1, 3).astype(np.int32)
+    h, s, v = hsv[:, 0], hsv[:, 1], hsv[:, 2]
+    mask = (s >= sat_min) & (v >= val_min) & (v <= val_max)
+    if exclude_skin:
+        mask = mask & ~_is_skin_like(h, s, v)
+    filtered = hsv[mask]
+    filtered_fraction = filtered.shape[0] / hsv.shape[0]
+    used_fallback = filtered_fraction < min_filtered_fraction
+    if used_fallback:
+        filtered = hsv
+    bins = (filtered[:, 0] // hue_bin_width).astype(np.int32)
+    values, counts = np.unique(bins, return_counts=True)
+    order = np.argsort(counts)[::-1]
+    dominant_bin = int(values[order[0]])
+    dominant_bin_count = int(counts[order[0]])
+    runner_up_bin = int(values[order[1]]) if len(order) > 1 else None
+    runner_up_bin_count = int(counts[order[1]]) if len(order) > 1 else 0
+    in_bin = filtered[bins == dominant_bin]
+    med_h, med_s, med_v = np.median(in_bin, axis=0)
+    color = classify_hsv_pixel(float(med_h), float(med_s), float(med_v))
+    return {
+        "color": color,
+        "used_fallback": bool(used_fallback),
+        "filtered_fraction": round(float(filtered_fraction), 4),
+        "dominant_bin": dominant_bin,
+        "dominant_bin_count": dominant_bin_count,
+        "runner_up_bin": runner_up_bin,
+        "runner_up_bin_count": runner_up_bin_count,
+        "median_h": round(float(med_h), 1),
+        "median_s": round(float(med_s), 1),
+        "median_v": round(float(med_v), 1),
+    }
+
+
 def region_dominant_color(
     region_bgr: np.ndarray,
     sat_min: int = 25,
@@ -248,22 +322,15 @@ def region_dominant_color(
     피부색 픽셀만 필터를 통과해 Hue 다수결을 오염시켰다 — 필터 통과 비율이
     낮다는 것 자체가 "필터링된 집합이 실제 옷 색상을 대표하지 못한다"는 신호다).
     """
-    if region_bgr.size == 0:
-        return "gray"
-    hsv = _to_hsv(region_bgr).reshape(-1, 3).astype(np.int32)
-    h, s, v = hsv[:, 0], hsv[:, 1], hsv[:, 2]
-    mask = (s >= sat_min) & (v >= val_min) & (v <= val_max)
-    if exclude_skin:
-        mask = mask & ~_is_skin_like(h, s, v)
-    filtered = hsv[mask]
-    if filtered.shape[0] < min_filtered_fraction * hsv.shape[0]:
-        filtered = hsv
-    bins = (filtered[:, 0] // hue_bin_width).astype(np.int32)
-    values, counts = np.unique(bins, return_counts=True)
-    dominant_bin = values[np.argmax(counts)]
-    in_bin = filtered[bins == dominant_bin]
-    med_h, med_s, med_v = np.median(in_bin, axis=0)
-    return classify_hsv_pixel(float(med_h), float(med_s), float(med_v))
+    return region_dominant_color_diagnostic(
+        region_bgr,
+        sat_min=sat_min,
+        val_min=val_min,
+        val_max=val_max,
+        hue_bin_width=hue_bin_width,
+        exclude_skin=exclude_skin,
+        min_filtered_fraction=min_filtered_fraction,
+    )["color"]
 
 
 def frame_mean_brightness(frame_bgr: np.ndarray) -> float:
@@ -358,6 +425,15 @@ def region_dominant_color_from_pixels(pixels_bgr: np.ndarray, **kwargs) -> str:
     return region_dominant_color(pseudo_region, **kwargs)
 
 
+def region_dominant_color_diagnostic_from_pixels(pixels_bgr: np.ndarray, **kwargs) -> dict:
+    """region_dominant_color_from_pixels의 진단 버전 (EXP-032). 세그멘테이션 마스크로
+    걸러낸 픽셀 집합에 region_dominant_color_diagnostic을 그대로 적용한다."""
+    if pixels_bgr.size == 0:
+        return region_dominant_color_diagnostic(pixels_bgr, **kwargs)
+    pseudo_region = pixels_bgr.reshape(-1, 1, 3).astype(np.uint8)
+    return region_dominant_color_diagnostic(pseudo_region, **kwargs)
+
+
 def split_upper_lower_by_mask(
     mask: np.ndarray,
     head_skip_ratio: float = 0.22,
@@ -417,6 +493,57 @@ def classify_person_attributes_with_mask(
         return region_dominant_color_from_pixels(crop_bgr[region_mask.astype(bool)])
 
     return {"upper": _resolve(upper_mask, fallback_upper), "lower": _resolve(lower_mask, fallback_lower)}
+
+
+def classify_person_attributes_with_mask_diagnostic(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    head_skip_ratio: float = 0.22,
+    upper_end_ratio: float = 0.55,
+    foot_skip_ratio: float = 0.08,
+    min_mask_fraction: float = 0.05,
+) -> dict:
+    """classify_person_attributes_with_mask(대안 C)의 진단 버전 (EXP-032, Error Analysis -
+    production이 실제로 쓰는 c_wb의 오분류 원인을 region_dominant_color_diagnostic 수준까지
+    들여다본다). 각 region(upper/lower)에 대해 "마스크를 실제로 썼는가 사각형 폴백을
+    썼는가"(used_mask)와 Hue 다수결 진단(region_dominant_color_diagnostic 반환값)을
+    합쳐서 반환한다.
+    """
+    if crop_bgr.size == 0 or mask.size == 0:
+        empty = region_dominant_color_diagnostic(np.zeros((0, 0, 3), dtype=np.uint8))
+        empty["used_mask"] = False
+        return {"upper": dict(empty), "lower": dict(empty)}
+    upper_mask, lower_mask = split_upper_lower_by_mask(mask, head_skip_ratio, upper_end_ratio, foot_skip_ratio)
+    fallback_upper, fallback_lower = split_upper_lower(
+        crop_bgr,
+        head_skip_ratio=head_skip_ratio,
+        upper_end_ratio=upper_end_ratio,
+        foot_skip_ratio=foot_skip_ratio,
+        side_margin_ratio=0.12,
+    )
+
+    def _resolve(region_mask: np.ndarray, fallback_region: np.ndarray) -> dict:
+        total = region_mask.size
+        if total == 0 or region_mask.sum() < min_mask_fraction * total:
+            diag = region_dominant_color_diagnostic(fallback_region)
+            diag["used_mask"] = False
+            return diag
+        diag = region_dominant_color_diagnostic_from_pixels(crop_bgr[region_mask.astype(bool)])
+        diag["used_mask"] = True
+        return diag
+
+    return {"upper": _resolve(upper_mask, fallback_upper), "lower": _resolve(lower_mask, fallback_lower)}
+
+
+def classify_person_attributes_with_mask_and_wb_diagnostic(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    **kwargs,
+) -> dict:
+    """classify_person_attributes_with_mask_and_wb(c_wb, production이 실제로 쓰는 method)의
+    진단 버전 (EXP-032)."""
+    balanced = white_balance_gray_world(crop_bgr)
+    return classify_person_attributes_with_mask_diagnostic(balanced, mask, **kwargs)
 
 
 def classify_person_attributes_with_mask_and_wb(
