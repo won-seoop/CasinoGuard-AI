@@ -12,7 +12,11 @@ from src.attributes.color import (
     classify_person_attributes_with_mask,
     classify_person_attributes_with_mask_and_wb,
     classify_person_attributes_with_mask_and_wb_diagnostic,
+    classify_person_attributes_with_mask_and_wb_graded,
+    classify_person_attributes_with_mask_and_wb_relaxed,
     classify_person_attributes_with_mask_diagnostic,
+    classify_person_attributes_with_mask_graded,
+    classify_person_attributes_with_mask_relaxed,
     estimate_gamma_from_reference,
     frame_channel_cast_deviation,
     frame_mean_brightness,
@@ -20,6 +24,9 @@ from src.attributes.color import (
     region_dominant_color,
     region_dominant_color_diagnostic,
     region_dominant_color_from_pixels,
+    region_dominant_color_graded_fallback,
+    region_dominant_color_graded_fallback_diagnostic,
+    region_dominant_color_graded_fallback_from_pixels,
     region_mean_color,
     split_upper_lower,
     split_upper_lower_by_mask,
@@ -204,6 +211,82 @@ class TestRegionDominantColorDiagnostic:
         assert diag["runner_up_bin_count"] is not None and diag["runner_up_bin_count"] > 0
         margin = diag["dominant_bin_count"] / (diag["dominant_bin_count"] + diag["runner_up_bin_count"])
         assert margin == pytest.approx(0.5, abs=0.05)
+
+
+class TestRegionDominantColorGradedFallback:
+    """EXP-033 대안 B(채택): min_filtered_fraction 폴백을 이분법(필터 통과 미달 ->
+    완전 포기하고 원본 전체로 복귀) 대신 val_min을 단계적으로(35->15->0) 완화하는
+    다단 폴백으로 바꾼 함수. EXP-032가 실측한 원인(그림자 제거용 val_min=35가 그림자와
+    진짜 어두운 옷을 구분하지 못해 함께 제외시키고, 그 결과 폴백이 과도하게 자주
+    발동해 오분류의 35~40%를 차지함)을 직접 겨냥한다."""
+
+    def test_solid_region_matches_binary_function_when_no_fallback_needed(self):
+        img = solid_bgr(RED, h=50, w=50)
+        assert region_dominant_color_graded_fallback(img) == region_dominant_color(img) == "red"
+
+    def test_color_matches_own_diagnostic_function(self):
+        img = solid_bgr(RED, h=50, w=50)
+        diag = region_dominant_color_graded_fallback_diagnostic(img)
+        assert diag["color"] == region_dominant_color_graded_fallback(img) == "red"
+        assert diag["used_fallback"] is False
+        assert diag["fallback_level"] == 35  # 기본 val_min_steps[0]과 동일
+
+    def test_dark_but_saturated_pixel_rescued_by_intermediate_step(self):
+        """V=20(기본 val_min=35 미달)이지만 양자화 Noise로 S=179까지 뜨는 어두운
+        픽셀(진짜 검정 옷에서 흔한 패턴, EXP-032 Result 분석)은 val_min=15 단계에서
+        구제되어야 한다 - 완전 raw로 가지 않고도 필터를 통과한다."""
+        img = solid_bgr((8, 6, 20), h=50, w=50)  # H=176,S=179,V=20 (EXP-033 측정값)
+        diag = region_dominant_color_graded_fallback_diagnostic(img)
+        assert diag["fallback_level"] == 15
+        assert diag["used_fallback"] is True
+        assert diag["filtered_fraction"] == pytest.approx(1.0)
+        assert diag["color"] == "black"
+
+    def test_rescues_dark_garment_from_skin_contamination_that_flips_binary_fallback(self):
+        """핵심 회귀 시나리오(EXP-033): 진짜 어두운 옷(V=20)이 서로 다른 Hue로 흩어져
+        있고(단일 Hue bin이 과반을 못 차지함) 피부색이 30% 섞이면, 이분법적 폴백은
+        전부 원본으로 돌아가 피부색 Hue bin(단일 bin에 30%, 어두운 옷의 각 하위
+        bin보다 큼)이 다수결을 가져가 "orange"로 오분류한다. 단계적 폴백은 val_min=15
+        단계에서 피부색만 걸러낸 채(skin exclusion은 모든 단계에서 유지) 어두운
+        픽셀만으로 다수결을 돌려 "black"을 올바르게 유지해야 한다."""
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        img[0:17, :] = (8, 6, 20)  # 어두운 옷, Hue 1
+        img[17:34, :] = (20, 6, 8)  # 어두운 옷, Hue 2
+        img[34:52, :] = (6, 20, 8)  # 어두운 옷, Hue 3
+        img[52:70, :] = (8, 20, 6)  # 어두운 옷, Hue 4 (옷 전체 70%, 4개 Hue bin으로 분산)
+        img[70:100, :] = (120, 170, 210)  # 피부색 30% (단일 Hue bin)
+
+        assert region_dominant_color(img) == "orange"  # 기존 이분법 폴백은 오분류
+        assert region_dominant_color_graded_fallback(img) == "black"  # 단계적 폴백은 보존
+
+    def test_pure_zero_saturation_shadow_still_falls_back_to_full_raw(self):
+        """채도가 0인(순수 회색) 영역은 val_min을 아무리 낮춰도 sat_min(채도 하한)
+        필터 자체에 걸려 모든 단계에서 0픽셀이 남는다 - 이 경우에는 기존 함수와
+        동일하게 완전 원본으로 되돌아가는 최후 수단이 그대로 동작해야 한다(회귀 방지,
+        TestRegionDominantColor.test_all_shadow_falls_back_to_unfiltered와 동일 입력)."""
+        img = solid_bgr((5, 5, 5), h=50, w=50)
+        diag = region_dominant_color_graded_fallback_diagnostic(img)
+        assert diag["fallback_level"] is None
+        assert diag["used_fallback"] is True
+        assert diag["color"] == "black"
+
+    def test_empty_region_defaults_to_gray_without_crashing(self):
+        diag = region_dominant_color_graded_fallback_diagnostic(np.zeros((0, 0, 3), dtype=np.uint8))
+        assert diag["color"] == "gray"
+        assert diag["fallback_level"] is None
+        assert diag["used_fallback"] is False
+
+
+class TestRegionDominantColorGradedFallbackFromPixels:
+    def test_flat_pixel_array_classified_same_as_2d_region(self):
+        region = solid_bgr((8, 6, 20), h=50, w=50)
+        pixels = region.reshape(-1, 3)
+        assert region_dominant_color_graded_fallback_from_pixels(pixels) == region_dominant_color_graded_fallback(
+            region
+        )
+
+    def test_empty_pixels_defaults_to_gray(self):
+        assert region_dominant_color_graded_fallback_from_pixels(np.zeros((0, 3), dtype=np.uint8)) == "gray"
 
 
 class TestWhiteBalanceGrayWorld:
@@ -419,6 +502,88 @@ class TestClassifyPersonAttributesWithMaskAndWb:
         assert result["lower"] in COLOR_BUCKETS
 
 
+class TestClassifyPersonAttributesWithMaskGraded:
+    """EXP-033 대안 B를 production 경로(Mask 기반 영역 분리)에 그대로 연결한 변형.
+    영역 분리/마스크 폴백 동작은 classify_person_attributes_with_mask(대안 C)와
+    동일해야 하고, Hue 다수결 폴백만 graded로 바뀐 효과가 나타나야 한다."""
+
+    def test_mask_excludes_background_bleed_same_as_non_graded(self):
+        img = solid_bgr(RED, h=100, w=100)
+        img[:, 40:60] = BLUE
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[:, 40:60] = True
+        result = classify_person_attributes_with_mask_graded(img, mask)
+        assert result["upper"] == "blue"
+        assert result["lower"] == "blue"
+
+    def test_mask_below_min_fraction_falls_back_to_graded_rectangle_region(self):
+        img = solid_bgr(GREEN, h=100, w=100)
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[0, 0] = True
+        result = classify_person_attributes_with_mask_graded(img, mask, min_mask_fraction=0.05)
+        fallback = classify_person_attributes(img, method="b_graded")
+        assert result == fallback
+
+    def test_rescues_dark_garment_within_mask_that_flips_binary_mask_fallback(self):
+        """TestRegionDominantColorGradedFallback의 핵심 회귀 시나리오를 Mask 기반
+        production 경로(대안 C)에 그대로 연결해도 동일하게 재현되는지 확인한다 - 마스크
+        안쪽 픽셀 집합도 결국 region_dominant_color(_from_pixels)를 거치므로 동일한
+        폴백 버그/수정이 적용되어야 한다."""
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        img[0:17, :] = (8, 6, 20)
+        img[17:34, :] = (20, 6, 8)
+        img[34:52, :] = (6, 20, 8)
+        img[52:70, :] = (8, 20, 6)
+        img[70:100, :] = (120, 170, 210)
+        mask = np.ones((100, 60), dtype=bool)
+
+        assert classify_person_attributes_with_mask(img, mask)["lower"] == "orange"
+        assert classify_person_attributes_with_mask_graded(img, mask)["lower"] == "black"
+
+    def test_empty_crop_defaults_to_gray(self):
+        result = classify_person_attributes_with_mask_graded(
+            np.zeros((0, 0, 3), dtype=np.uint8), np.zeros((0, 0), dtype=bool)
+        )
+        assert result == {"upper": "gray", "lower": "gray"}
+
+
+class TestClassifyPersonAttributesWithMaskAndWbGraded:
+    def test_combines_mask_and_white_balance(self):
+        img = solid_bgr((180, 90, 80), h=100, w=100)
+        mask = np.ones((100, 100), dtype=bool)
+        result = classify_person_attributes_with_mask_and_wb_graded(img, mask)
+        assert result["upper"] in COLOR_BUCKETS
+        assert result["lower"] in COLOR_BUCKETS
+
+
+class TestClassifyPersonAttributesWithMaskRelaxed:
+    """EXP-033 대안 A(val_min=35->10 단순 완화)를 production 경로에 연결한 변형."""
+
+    def test_mask_excludes_background_bleed_same_as_non_relaxed(self):
+        img = solid_bgr(RED, h=100, w=100)
+        img[:, 40:60] = BLUE
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[:, 40:60] = True
+        result = classify_person_attributes_with_mask_relaxed(img, mask)
+        assert result["upper"] == "blue"
+        assert result["lower"] == "blue"
+
+    def test_empty_crop_defaults_to_gray(self):
+        result = classify_person_attributes_with_mask_relaxed(
+            np.zeros((0, 0, 3), dtype=np.uint8), np.zeros((0, 0), dtype=bool)
+        )
+        assert result == {"upper": "gray", "lower": "gray"}
+
+
+class TestClassifyPersonAttributesWithMaskAndWbRelaxed:
+    def test_combines_mask_and_white_balance(self):
+        img = solid_bgr((180, 90, 80), h=100, w=100)
+        mask = np.ones((100, 100), dtype=bool)
+        result = classify_person_attributes_with_mask_and_wb_relaxed(img, mask)
+        assert result["upper"] in COLOR_BUCKETS
+        assert result["lower"] in COLOR_BUCKETS
+
+
 class TestClassifyPersonAttributes:
     def test_two_tone_crop_baseline_cannot_separate(self):
         img = np.zeros((100, 60, 3), dtype=np.uint8)
@@ -438,6 +603,38 @@ class TestClassifyPersonAttributes:
     def test_unknown_method_raises(self):
         with pytest.raises(ValueError):
             classify_person_attributes(solid_bgr(RED), method="z")
+
+    def test_method_b_relaxed_separates_upper_lower_like_method_b(self):
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        img[:55, :] = WHITE
+        img[55:, :] = BLUE
+        result = classify_person_attributes(img, method="b_relaxed")
+        assert result["upper"] == "white"
+        assert result["lower"] == "blue"
+
+    def test_method_b_graded_separates_upper_lower_like_method_b(self):
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        img[:55, :] = WHITE
+        img[55:, :] = BLUE
+        result = classify_person_attributes(img, method="b_graded")
+        assert result["upper"] == "white"
+        assert result["lower"] == "blue"
+
+    def test_method_b_graded_rescues_dark_garment_that_flips_method_b(self):
+        """EXP-033 핵심 회귀 시나리오를 classify_person_attributes(method=...) 공개
+        API 수준에서도 재현한다 - method b의 lower 영역(head_skip 22%~foot_skip
+        92% 행, side_margin 12% 제외 열)에 맞춰 fixture를 배치했다(아래 좌표는 실제
+        split_upper_lower 경계에서 역산해 맞춘 값)."""
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        img[:92, :] = WHITE  # upper 영역(22~55%)은 흰색 그대로
+        img[55:62, :] = (8, 6, 20)  # lower 영역 시작(55%)부터 어두운 옷 70%, 4개 Hue로 분산
+        img[62:69, :] = (20, 6, 8)
+        img[69:76, :] = (6, 20, 8)
+        img[76:81, :] = (8, 20, 6)
+        img[81:92, :] = (120, 170, 210)  # 피부색 30%(foot_skip 92% 직전까지)
+
+        assert classify_person_attributes(img, method="b")["lower"] == "orange"
+        assert classify_person_attributes(img, method="b_graded")["lower"] == "black"
 
 
 class TestEstimateGammaFromReference:

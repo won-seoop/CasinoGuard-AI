@@ -1,0 +1,186 @@
+{
+  "n_ground_truth_crops": 21,
+  "n_cells_total": 210,
+  "methods": {
+    "b": {
+      "overall_accuracy": 0.2762,
+      "overall_correct": 58,
+      "overall_total": 210,
+      "gt_black_accuracy": 0.42,
+      "gt_black_total_cells": 100,
+      "accuracy_by_condition": {
+        "normal": {
+          "overall_accuracy": 0.381,
+          "gt_black_accuracy": 0.6
+        },
+        "low_light": {
+          "overall_accuracy": 0.381,
+          "gt_black_accuracy": 0.8
+        },
+        "strong_light": {
+          "overall_accuracy": 0.2619,
+          "gt_black_accuracy": 0.1
+        },
+        "warm_cast": {
+          "overall_accuracy": 0.1667,
+          "gt_black_accuracy": 0.3
+        },
+        "cool_cast": {
+          "overall_accuracy": 0.1905,
+          "gt_black_accuracy": 0.3
+        }
+      }
+    },
+    "b_relaxed": {
+      "overall_accuracy": 0.3619,
+      "overall_correct": 76,
+      "overall_total": 210,
+      "gt_black_accuracy": 0.59,
+      "gt_black_total_cells": 100,
+      "accuracy_by_condition": {
+        "normal": {
+          "overall_accuracy": 0.4524,
+          "gt_black_accuracy": 0.7
+        },
+        "low_light": {
+          "overall_accuracy": 0.4286,
+          "gt_black_accuracy": 0.9
+        },
+        "strong_light": {
+          "overall_accuracy": 0.2857,
+          "gt_black_accuracy": 0.15
+        },
+        "warm_cast": {
+          "overall_accuracy": 0.3095,
+          "gt_black_accuracy": 0.6
+        },
+        "cool_cast": {
+          "overall_accuracy": 0.3333,
+          "gt_black_accuracy": 0.6
+        }
+      }
+    },
+    "b_graded": {
+      "overall_accuracy": 0.2762,
+      "overall_correct": 58,
+      "overall_total": 210,
+      "gt_black_accuracy": 0.46,
+      "gt_black_total_cells": 100,
+      "accuracy_by_condition": {
+        "normal": {
+          "overall_accuracy": 0.381,
+          "gt_black_accuracy": 0.6
+        },
+        "low_light": {
+          "overall_accuracy": 0.4048,
+          "gt_black_accuracy": 0.85
+        },
+        "strong_light": {
+          "overall_accuracy": 0.1667,
+          "gt_black_accuracy": 0.1
+        },
+        "warm_cast": {
+          "overall_accuracy": 0.2381,
+          "gt_black_accuracy": 0.45
+        },
+        "cool_cast": {
+          "overall_accuracy": 0.1905,
+          "gt_black_accuracy": 0.3
+        }
+      }
+    },
+    "c_wb": {
+      "overall_accuracy": 0.4143,
+      "overall_correct": 87,
+      "overall_total": 210,
+      "gt_black_accuracy": 0.6,
+      "gt_black_total_cells": 100,
+      "accuracy_by_condition": {
+        "normal": {
+          "overall_accuracy": 0.4286,
+          "gt_black_accuracy": 0.65
+        },
+        "low_light": {
+          "overall_accuracy": 0.4762,
+          "gt_black_accuracy": 0.95
+        },
+        "strong_light": {
+          "overall_accuracy": 0.3571,
+          "gt_black_accuracy": 0.2
+        },
+        "warm_cast": {
+          "overall_accuracy": 0.4048,
+          "gt_black_accuracy": 0.6
+        },
+        "cool_cast": {
+          "overall_accuracy": 0.4048,
+          "gt_black_accuracy": 0.6
+        }
+      }
+    },
+    "c_wb_relaxed": {
+      "overall_accuracy": 0.4905,
+      "overall_correct": 103,
+      "overall_total": 210,
+      "gt_black_accuracy": 0.75,
+      "gt_black_total_cells": 100,
+      "accuracy_by_condition": {
+        "normal": {
+          "overall_accuracy": 0.5476,
+          "gt_black_accuracy": 0.85
+        },
+        "low_light": {
+          "overall_accuracy": 0.4524,
+          "gt_black_accuracy": 0.95
+        },
+        "strong_light": {
+          "overall_accuracy": 0.381,
+          "gt_black_accuracy": 0.25
+        },
+        "warm_cast": {
+          "overall_accuracy": 0.5476,
+          "gt_black_accuracy": 0.9
+        },
+        "cool_cast": {
+          "overall_accuracy": 0.5238,
+          "gt_black_accuracy": 0.8
+        }
+      }
+    },
+    "c_wb_graded": {
+      "overall_accuracy": 0.3667,
+      "overall_correct": 77,
+      "overall_total": 210,
+      "gt_black_accuracy": 0.59,
+      "gt_black_total_cells": 100,
+      "accuracy_by_condition": {
+        "normal": {
+          "overall_accuracy": 0.4048,
+          "gt_black_accuracy": 0.65
+        },
+        "low_light": {
+          "overall_accuracy": 0.4524,
+          "gt_black_accuracy": 0.9
+        },
+        "strong_light": {
+          "overall_accuracy": 0.2381,
+          "gt_black_accuracy": 0.2
+        },
+        "warm_cast": {
+          "overall_accuracy": 0.3571,
+          "gt_black_accuracy": 0.6
+        },
+        "cool_cast": {
+          "overall_accuracy": 0.381,
+          "gt_black_accuracy": 0.6
+        }
+      }
+    }
+  },
+  "fallback_usage": {
+    "n_cells_total": 210,
+    "b_binary_fallback_rate": 0.4381,
+    "b_graded_any_relaxation_rate": 0.4381,
+    "note": "b_graded_any_relaxation_rate는 '첫 단계(val_min=35)로 충분하지 않아 어느 완화 단계든 사용한' 비율이다 - 완화된 단계를 쓰는 것 자체는 문제가 아니라 설계 의도이므로, 이 수치는 '폴백이 발동했는가'와 '정확도'를 분리해서 봐야 한다(완화 단계를 더 자주 쓰면서도 Accuracy가 올랐다면 설계가 의도대로 작동했다는 뜻)."
+  }
+}

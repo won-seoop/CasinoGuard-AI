@@ -333,6 +333,195 @@ def region_dominant_color(
     )["color"]
 
 
+def region_dominant_color_graded_fallback_diagnostic(
+    region_bgr: np.ndarray,
+    sat_min: int = 25,
+    val_min_steps: tuple[int, ...] = (35, 15, 0),
+    val_max: int = 245,
+    hue_bin_width: int = 10,
+    exclude_skin: bool = True,
+    min_filtered_fraction: float = 0.3,
+) -> dict:
+    """대안 B(EXP-033, 채택): FC-012 Next Action(EXP-032) - min_filtered_fraction 폴백
+    경로 자체의 재설계.
+
+    EXP-032가 실측한 원인(Result 3): region_dominant_color의 이분법적 폴백(필터 통과
+    픽셀이 min_filtered_fraction 미만이면 필터를 완전히 버리고 원본 전체 픽셀로 복귀 -
+    skin exclusion까지 함께 사라짐)이 GT=black 오분류의 35~40%를 차지한다. 그 폴백이
+    자주 발동하는 이유는 val_min=35(그림자 제거용 하한)가 "그림자"와 "진짜 어두운
+    검정 옷"을 구분하지 못해 함께 제외시키기 때문이다 - 둘 다 V(명도)가 낮다는 점에서는
+    동일한 신호를 낸다.
+
+    이 함수는 폴백이 발동할 때 전부 포기하는 대신 val_min_steps(기본 35->15->0)를
+    따라 그림자 하한만 단계적으로 완화한다. sat_min(채도 하한)·val_max(하이라이트)·
+    skin exclusion은 모든 단계에서 그대로 유지되므로, 배경 Bleed와 피부색은 계속
+    걸러내면서 "진짜 검정"만 더 많이 통과시킨다. 모든 단계가 min_filtered_fraction을
+    못 넘기면(crop이 실제로 거의 전부 배경/피부색) 가장 완화된 단계의 결과를 쓰고,
+    그마저도 0픽셀이면 그제서야(기존 함수와 동일하게) 완전 원본으로 되돌아간다.
+    """
+    if region_bgr.size == 0:
+        return {
+            "color": "gray",
+            "used_fallback": False,
+            "fallback_level": None,
+            "filtered_fraction": 0.0,
+            "dominant_bin": None,
+            "dominant_bin_count": 0,
+            "runner_up_bin": None,
+            "runner_up_bin_count": 0,
+            "median_h": None,
+            "median_s": None,
+            "median_v": None,
+        }
+    hsv = _to_hsv(region_bgr).reshape(-1, 3).astype(np.int32)
+    h, s, v = hsv[:, 0], hsv[:, 1], hsv[:, 2]
+    skin_mask = _is_skin_like(h, s, v) if exclude_skin else np.zeros(h.shape, dtype=bool)
+
+    filtered = None
+    chosen_level = None
+    filtered_fraction = 0.0
+    for val_min in val_min_steps:
+        candidate_mask = (s >= sat_min) & (v >= val_min) & (v <= val_max) & ~skin_mask
+        candidate = hsv[candidate_mask]
+        fraction = candidate.shape[0] / hsv.shape[0]
+        if fraction >= min_filtered_fraction:
+            filtered, chosen_level, filtered_fraction = candidate, val_min, fraction
+            break
+    if filtered is None:
+        val_min = val_min_steps[-1]
+        candidate_mask = (s >= sat_min) & (v >= val_min) & (v <= val_max) & ~skin_mask
+        filtered = hsv[candidate_mask]
+        filtered_fraction = filtered.shape[0] / hsv.shape[0]
+        chosen_level = val_min
+        if filtered.shape[0] == 0:
+            filtered = hsv
+            chosen_level = None
+
+    bins = (filtered[:, 0] // hue_bin_width).astype(np.int32)
+    values, counts = np.unique(bins, return_counts=True)
+    order = np.argsort(counts)[::-1]
+    dominant_bin = int(values[order[0]])
+    dominant_bin_count = int(counts[order[0]])
+    runner_up_bin = int(values[order[1]]) if len(order) > 1 else None
+    runner_up_bin_count = int(counts[order[1]]) if len(order) > 1 else 0
+    in_bin = filtered[bins == dominant_bin]
+    med_h, med_s, med_v = np.median(in_bin, axis=0)
+    color = classify_hsv_pixel(float(med_h), float(med_s), float(med_v))
+    return {
+        "color": color,
+        "used_fallback": chosen_level != val_min_steps[0],
+        "fallback_level": chosen_level,
+        "filtered_fraction": round(float(filtered_fraction), 4),
+        "dominant_bin": dominant_bin,
+        "dominant_bin_count": dominant_bin_count,
+        "runner_up_bin": runner_up_bin,
+        "runner_up_bin_count": runner_up_bin_count,
+        "median_h": round(float(med_h), 1),
+        "median_s": round(float(med_s), 1),
+        "median_v": round(float(med_v), 1),
+    }
+
+
+def region_dominant_color_graded_fallback(region_bgr: np.ndarray, **kwargs) -> str:
+    """region_dominant_color_graded_fallback_diagnostic의 color만 반환하는 thin wrapper."""
+    return region_dominant_color_graded_fallback_diagnostic(region_bgr, **kwargs)["color"]
+
+
+def region_dominant_color_graded_fallback_from_pixels(pixels_bgr: np.ndarray, **kwargs) -> str:
+    """region_dominant_color_from_pixels와 동일하게, 세그멘테이션 마스크로 걸러낸
+    1차원 픽셀 집합(N,3)에 region_dominant_color_graded_fallback을 적용한다."""
+    if pixels_bgr.size == 0:
+        return "gray"
+    pseudo_region = pixels_bgr.reshape(-1, 1, 3).astype(np.uint8)
+    return region_dominant_color_graded_fallback(pseudo_region, **kwargs)
+
+
+def classify_person_attributes_with_mask_relaxed(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    head_skip_ratio: float = 0.22,
+    upper_end_ratio: float = 0.55,
+    foot_skip_ratio: float = 0.08,
+    min_mask_fraction: float = 0.05,
+    val_min: int = 10,
+) -> dict[str, str]:
+    """대안 A(EXP-033): classify_person_attributes_with_mask(대안 C)와 영역 분리는
+    동일하게 두고, region_dominant_color의 val_min만 35->10으로 낮춘 가장 단순한
+    수정이다(폴백 설계 자체는 그대로 이분법). "그림자 하한을 그냥 낮추면 되지 않을까"
+    라는 가장 직관적인 첫 시도를 대안 B(graded fallback)와 비교하기 위해 둔다.
+    """
+    if crop_bgr.size == 0 or mask.size == 0:
+        return {"upper": "gray", "lower": "gray"}
+    upper_mask, lower_mask = split_upper_lower_by_mask(mask, head_skip_ratio, upper_end_ratio, foot_skip_ratio)
+    fallback_upper, fallback_lower = split_upper_lower(
+        crop_bgr,
+        head_skip_ratio=head_skip_ratio,
+        upper_end_ratio=upper_end_ratio,
+        foot_skip_ratio=foot_skip_ratio,
+        side_margin_ratio=0.12,
+    )
+
+    def _resolve(region_mask: np.ndarray, fallback_region: np.ndarray) -> str:
+        total = region_mask.size
+        if total == 0 or region_mask.sum() < min_mask_fraction * total:
+            return region_dominant_color(fallback_region, val_min=val_min)
+        return region_dominant_color_from_pixels(crop_bgr[region_mask.astype(bool)], val_min=val_min)
+
+    return {"upper": _resolve(upper_mask, fallback_upper), "lower": _resolve(lower_mask, fallback_lower)}
+
+
+def classify_person_attributes_with_mask_and_wb_relaxed(
+    crop_bgr: np.ndarray, mask: np.ndarray, **kwargs
+) -> dict[str, str]:
+    """classify_person_attributes_with_mask_and_wb(c_wb, production)와 동일하게
+    Mask+White Balance를 적용하되, 대안 A(val_min 완화)만 추가한 변형."""
+    balanced = white_balance_gray_world(crop_bgr)
+    return classify_person_attributes_with_mask_relaxed(balanced, mask, **kwargs)
+
+
+def classify_person_attributes_with_mask_graded(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    head_skip_ratio: float = 0.22,
+    upper_end_ratio: float = 0.55,
+    foot_skip_ratio: float = 0.08,
+    min_mask_fraction: float = 0.05,
+) -> dict[str, str]:
+    """대안 B(EXP-033, 채택): classify_person_attributes_with_mask(대안 C)와 영역
+    분리는 동일하게 두고, Hue 다수결의 min_filtered_fraction 폴백만
+    region_dominant_color_graded_fallback(단계적 val_min 완화)으로 교체한다.
+    """
+    if crop_bgr.size == 0 or mask.size == 0:
+        return {"upper": "gray", "lower": "gray"}
+    upper_mask, lower_mask = split_upper_lower_by_mask(mask, head_skip_ratio, upper_end_ratio, foot_skip_ratio)
+    fallback_upper, fallback_lower = split_upper_lower(
+        crop_bgr,
+        head_skip_ratio=head_skip_ratio,
+        upper_end_ratio=upper_end_ratio,
+        foot_skip_ratio=foot_skip_ratio,
+        side_margin_ratio=0.12,
+    )
+
+    def _resolve(region_mask: np.ndarray, fallback_region: np.ndarray) -> str:
+        total = region_mask.size
+        if total == 0 or region_mask.sum() < min_mask_fraction * total:
+            return region_dominant_color_graded_fallback(fallback_region)
+        return region_dominant_color_graded_fallback_from_pixels(crop_bgr[region_mask.astype(bool)])
+
+    return {"upper": _resolve(upper_mask, fallback_upper), "lower": _resolve(lower_mask, fallback_lower)}
+
+
+def classify_person_attributes_with_mask_and_wb_graded(
+    crop_bgr: np.ndarray, mask: np.ndarray, **kwargs
+) -> dict[str, str]:
+    """classify_person_attributes_with_mask_and_wb(c_wb, production)와 동일하게
+    Mask+White Balance를 적용하되, 대안 B(graded fallback)만 추가한 변형. EXP-033에서
+    production 승격 여부를 결정하기 위한 비교 대상이다.
+    """
+    balanced = white_balance_gray_world(crop_bgr)
+    return classify_person_attributes_with_mask_graded(balanced, mask, **kwargs)
+
+
 def frame_mean_brightness(frame_bgr: np.ndarray) -> float:
     """Frame 전체(HSV V 채널)의 평균 밝기 (EXP-031, FC-012 Next Action: pixel-level 보정
     대신 "구간 단위 낮은 신뢰도 표시"로의 설계 전환).
@@ -620,4 +809,33 @@ def classify_person_attributes(crop_bgr: np.ndarray, method: str = "b") -> dict[
             side_margin_ratio=0.12,
         )
         return {"upper": region_dominant_color(upper), "lower": region_dominant_color(lower)}
+    if method == "b_relaxed":
+        # EXP-033 대안 A: method b와 영역 분리는 동일, region_dominant_color의
+        # val_min만 35->10으로 낮춘 가장 단순한 수정(폴백 설계 자체는 이분법 그대로).
+        upper, lower = split_upper_lower(
+            crop_bgr,
+            head_skip_ratio=0.22,
+            upper_end_ratio=0.55,
+            foot_skip_ratio=0.08,
+            side_margin_ratio=0.12,
+        )
+        return {
+            "upper": region_dominant_color(upper, val_min=10),
+            "lower": region_dominant_color(lower, val_min=10),
+        }
+    if method == "b_graded":
+        # EXP-033 대안 B(채택): method b와 영역 분리는 동일, Hue 다수결의
+        # min_filtered_fraction 폴백만 region_dominant_color_graded_fallback(단계적
+        # val_min 완화 35->15->0)으로 교체한다.
+        upper, lower = split_upper_lower(
+            crop_bgr,
+            head_skip_ratio=0.22,
+            upper_end_ratio=0.55,
+            foot_skip_ratio=0.08,
+            side_margin_ratio=0.12,
+        )
+        return {
+            "upper": region_dominant_color_graded_fallback(upper),
+            "lower": region_dominant_color_graded_fallback(lower),
+        }
     raise ValueError(f"unknown method: {method}")
