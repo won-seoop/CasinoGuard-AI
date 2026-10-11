@@ -234,6 +234,40 @@ Accuracy +2.9~4.6pp — 과거 PAR-017/018/019/021/022의 상대적 순위는 �
 확인). production 코드는 바꾸지 않고(진단 함수만 추가, 기존 함수는 동작 비변경
 Regression Test로 고정) 다음 방향을 "filter 폴백 경로 재설계"로 구체화했다(`PAR-023`).
 
+### FC-012 filter 폴백 재설계 - "정교한 수정"이 "거친 수정"보다 못했던 사례 (Stretch, EXP-033, **PAR-024**)
+
+EXP-032의 Error Analysis가 가리킨 filter 폴백 경로(필터 통과 픽셀 <30%→원본 전체로
+복귀)를 그대로 "정교하게"(val_min 단계적 완화 35→15→0, 대안 B) 재설계했더니
+production(c_wb) Overall Accuracy가 오히려 41.43%→**36.67%로 악화**됐다. 더 "거친"
+수정(val_min을 그냥 35→10으로 낮추는 대안 A, 폴백 설계 자체는 그대로)이 Overall
+**49.05%(+7.6pp)**/GT=black **75.00%(+15.0pp)**로 개선됐고, 비검정 GT에도 부작용이
+없었다. `b_used_fallback` 플래그로 직접 슬라이싱해 원인을 특정했다: 대안 B는 "폴백이
+발동한" cell에서는 실제로 대안 A를 이겼지만(72.73%>70.91%), Accuracy 손실의 더 큰
+원천(+31.1pp)은 EXP-032가 분석 대상에서 제외했던 "폴백이 전혀 발동하지 않는" cell에
+있었다 - val_min=35가 폴백을 피할 만큼은 통과시키면서도, 그 통과한 픽셀 집합 자체가
+대표성이 없었다. "오분류가 집중된 경로를 정확히 진단했다고 그 경로만 고치는 것이
+최선은 아니다"는 교훈을 남기고 대안 A를 채택했지만, n=21 한계로 production 기본값
+승격은 보류했다(`PAR-024`).
+
+### val_min=0 실제 파이프라인 직접 검증 + sat_min Sweep - 단조 추세는 끝까지, 비단조는 섣불리 가정하지 않는다 (Stretch, EXP-034, **PAR-025**)
+
+EXP-033이 채택한 val_min=10의 근거(val_min을 더 낮출수록 계속 좋아진다는 사후 Sweep)는
+Mask+White Balance를 뺀 근사치였다 - 실제 production 경로(`classify_person_
+attributes_with_mask_and_wb_relaxed`)에서 val_min=0까지 직접 재측정하니 가설대로
+단조 개선이 유지돼 Overall **50.48%**/GT=black **79.00%**(val_min=10보다도 각각
++1.43pp/+4.00pp 추가 개선)를 기록했다. 반면 같은 방식으로 sat_min(채도 하한)을
+Sweep한 두 번째 실험은 "낮출수록 좋아질 것"이라는 가설이 **반증**됐다 - sat_min을
+5~15로 낮추면 양쪽 극단(25, 0)보다 GT=black Accuracy가 오히려 낮아지는 비단조
+(U자형) 패턴이 나타났다. 결정론적 합성 픽셀로 재현한 원인: 필터가 엄격하면(25)
+중간 채도 오염이 걸려 제외되고 폴백이 발동해 진짜 어두운 다수가 이기지만, 필터를
+"딱 중간만" 완화하면(5~15) 오염은 통과하는데 더 어두운 진짜 다수는 여전히 통과하지
+못해 오염이 다수결을 가져가고, 필터를 완전히 버리면(0) 진짜 다수가 수(count) 기준
+으로 다시 우세해진다. 모든 지표에서 Baseline을 역전 없이 지배하는 **sat_min=20**만
+추가로 채택했다(val_min=0, sat_min=20 → Overall 50.95%/GT=black 79.00%/비검정 GT
+25.45%, 전부 EXP-033보다 개선이거나 동일). "한 파라미터의 단조 추세를 유사한 역할의
+다른 파라미터에 그대로 가정하지 않는다"는 재사용 가능한 원칙을 남기고 production
+승격은 여전히 보류했다(`PAR-025`).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -259,7 +293,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 | FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
-| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. **EXP-030/PAR-021**: Gamma Correction 대안 A(crop 자체 밝기)는 confound로 전체 Accuracy 붕괴(기각), 대안 B(배경 기반)는 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선했으나 synthetic Benchmark 한계로 `low_light`에 새 Regression 발생. **EXP-031/PAR-022**: Frame 노출/Cast 기반 confidence 표시도 가설과 정반대로 반증(unflagged Accuracy가 flagged보다 낮음). **EXP-032/PAR-023**: 더 이상 새 보정을 추가하지 않고 오분류 자체를 Hue 다수결 중간값 단위로 직접 진단 — "검정→blue" 프레이밍은 실제 오분류의 29.9~44.9%만 설명하고, 조명 무변형(normal) 상태에서도 40%대가 오분류되며, 오분류의 35~40%가 filter 폴백 경로에서 발생함을 확인(조명 보정 4종이 거의 효과 없었던 이유를 실측으로 설명). GT 라벨 오류 2건도 발견해 교정 재측정(normal Accuracy +5.5~5.9pp). 다음 후보는 filter 폴백 경로 재설계로 구체화, production 미연결 유지 |
+| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. **EXP-030/PAR-021**: Gamma Correction 대안 A(crop 자체 밝기)는 confound로 전체 Accuracy 붕괴(기각), 대안 B(배경 기반)는 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선했으나 synthetic Benchmark 한계로 `low_light`에 새 Regression 발생. **EXP-031/PAR-022**: Frame 노출/Cast 기반 confidence 표시도 가설과 정반대로 반증(unflagged Accuracy가 flagged보다 낮음). **EXP-032/PAR-023**: 더 이상 새 보정을 추가하지 않고 오분류 자체를 Hue 다수결 중간값 단위로 직접 진단 — "검정→blue" 프레이밍은 실제 오분류의 29.9~44.9%만 설명하고, 조명 무변형(normal) 상태에서도 40%대가 오분류되며, 오분류의 35~40%가 filter 폴백 경로에서 발생함을 확인(조명 보정 4종이 거의 효과 없었던 이유를 실측으로 설명). GT 라벨 오류 2건도 발견해 교정 재측정(normal Accuracy +5.5~5.9pp). **EXP-033/PAR-024**: filter 폴백 경로를 "정교하게"(val_min 단계적 완화) 재설계한 대안 B가 오히려 Overall Accuracy를 악화시킴(41.43%→36.67%) — 더 "거친" 수정(val_min 35→10 단순 완화, 대안 A)이 Overall 49.05%(+7.6pp)/GT=black 75.00%(+15.0pp)로 개선, 이득의 대부분이 Error Analysis가 제외했던 "폴백 미발동" cell에서 나왔음을 확인. **EXP-034/PAR-025**: val_min=10을 실제 Mask+WB 경로에서 재검증하니 val_min=0이 더 나음(Overall 50.48%/GT=black 79.00%)을 확인(가설 확인), 같은 방식의 sat_min Sweep은 비단조(U자형)로 반증되어 Baseline을 역전 없이 지배하는 sat_min=20만 추가 채택(val_min=0+sat_min=20 → Overall 50.95%/GT=black 79.00%). 두 실험 모두 n=21 한계로 production 미연결 유지 |
 
 ## 14. 주요 기술 의사결정
 
@@ -293,6 +327,8 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-021**: FC-012(`strong_light`) 복원을 위해 crop 자신의 밝기로 Gamma를 추정하는 대안 A를 구현했더니, "검정 옷은 어둡다"는 분류 신호와 "조명이 과다 노출"이라는 신호가 crop 하나로는 분리되지 않는 confound 때문에 목표 지표도 개선 못 하고 정상 조명 Accuracy까지 33.3%→9.5%로 붕괴(기각) → 감마를 crop이 아니라 같은 Frame의 배경에서 추정하는 대안 B로 confound를 해결해 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선, 단 synthetic Benchmark의 전역 균일 조명 특성상 `low_light`에 새 Regression이 생겨 Overall은 b보다 낮음을 그대로 기록(production 승격 보류)
 - **PAR-022**: FC-012 "구간 단위 낮은 신뢰도 표시" 설계를 Frame 밝기/Cast 편차 신호로 구현·검증했으나 세 Threshold 변형 모두 가설과 정반대로 반증됨(저신뢰도 표시 구간 Accuracy가 고신뢰도 표시 구간보다 오히려 높음, 30.6~31.9% > 11.5~22.3%) → 노출 신호가 가장 강하게 Flag하는 low_light가 이 classifier에서는 가장 정확한 조건(40.5%)이었기 때문임을 원인으로 특정하고 production 미연결 유지
 - **PAR-023**: FC-012를 겨냥한 조명 보정 4종+confidence 신호 2종이 모두 실패한 이유를, 새 보정을 추가하는 대신 오분류 자체를 Hue 다수결 중간값(필터 폴백 여부/예측 색 분포/margin) 단위로 직접 진단해 찾음 → "검정→blue" 프레이밍은 오분류의 29.9~44.9%만 설명했고, 조명 무변형(normal) 상태에서도 40%대가 오분류됐으며, 오분류의 35~40%가 PAR-016 filter 폴백 경로에서 발생함을 확인(조명 보정이 거의 효과 없었던 이유를 실측으로 설명). 부수적으로 GT 라벨 오류 2건도 발견해 교정 재측정(normal Accuracy +5.5~5.9pp, 과거 PAR들의 상대적 순위는 불변). 다음 방향을 "filter 폴백 경로 재설계"로 구체화
+- **PAR-024**: PAR-023의 Error Analysis가 가리킨 filter 폴백 경로를 "정교하게"(val_min 단계적 완화 35→15→0, 대안 B) 재설계했더니 production Overall Accuracy가 오히려 41.43%→36.67%로 악화됨 → 더 "거친" 수정(val_min을 그냥 35→10으로 완화, 대안 A)이 Overall 49.05%(+7.6pp)/GT=black 75.00%(+15.0pp)로 개선 - 이득의 대부분(+31.1pp)이 EXP-032 분석이 제외한 "폴백 미발동" cell에서 나왔음을 직접 슬라이싱으로 확인(정교한 진단이 가리킨 narrow한 수정이 더 거친 수정보다 못할 수 있다는 교훈)
+- **PAR-025**: PAR-024의 val_min=10 선택을 근사(Mask/WB 제외)로만 검증했던 한계를 메우기 위해 실제 production 경로(Mask+WB 포함)에서 val_min=0까지 직접 재측정하니 Overall 49.05%→50.95%로 더 개선됨을 확인(가설 확인) → 반면 같은 방식으로 sat_min(채도 하한)을 낮추는 두 번째 실험은 "낮출수록 좋아질 것"이라는 가설이 반증되어 비단조(U자형, sat_min=5~15 구간이 양쪽 극단보다 나쁨) 패턴을 발견 - 모든 지표에서 Baseline을 역전 없이 지배하는 sat_min=20만 추가로 채택(val_min 단조 추세를 다른 유사 파라미터에 그대로 가정하지 않는다는 원칙 확립)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -336,7 +372,7 @@ cd cctv
 python3 -m venv .venv && source .venv/bin/activate
 pip install opencv-python ultralytics numpy fastapi "uvicorn[standard]" pytest lap matplotlib
 
-# 단위 테스트 (202개, 7 skipped)
+# 단위 테스트 (265개, 7 skipped)
 pytest tests/ -q
 
 # 각 Phase 실험 재현
@@ -367,6 +403,8 @@ python scripts/run_exp029_attribute_pipeline_integration.py      # Attribute 실
 python scripts/run_exp030_attribute_gamma_correction.py          # FC-012 strong_light Gamma Correction A(crop 자체)/B(배경 기반) 비교 (PAR-021)
 python scripts/run_exp031_attribute_confidence_flag.py           # FC-012 구간 단위 신뢰도 표시 Frame 노출/Cast 신호 A/B/C 비교 (PAR-022)
 python scripts/run_exp032_attribute_black_error_analysis.py      # GT=black 오분류 Hue 다수결 단위 Error Analysis + GT 라벨 오류 교정 (PAR-023)
+python scripts/run_exp033_fallback_redesign.py                   # filter 폴백 재설계 val_min 완화(A) vs 단계적 폴백(B) 비교 (PAR-024)
+python scripts/run_exp034_val_min_zero_sat_min_sweep.py          # val_min=0 실제 파이프라인 재검증 + sat_min Sweep (PAR-025)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py

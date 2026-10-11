@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytest
 
@@ -573,6 +574,88 @@ class TestClassifyPersonAttributesWithMaskRelaxed:
             np.zeros((0, 0, 3), dtype=np.uint8), np.zeros((0, 0), dtype=bool)
         )
         assert result == {"upper": "gray", "lower": "gray"}
+
+
+class TestClassifyPersonAttributesWithMaskRelaxedSatMin:
+    """EXP-034: sat_min을 val_min과 독립적으로 Sweep할 수 있도록 classify_person_
+    attributes_with_mask_relaxed에 노출한 파라미터가 실제로 region_dominant_color까지
+    전달되는지 고정한다(기본값 25는 EXP-033 당시 동작과 동일해야 한다)."""
+
+    @staticmethod
+    def _hsv_block(h: int, s: int, v: int, rows: int, cols: int) -> np.ndarray:
+        block = np.zeros((rows, cols, 3), dtype=np.uint8)
+        block[:, :] = (h, s, v)
+        return cv2.cvtColor(block, cv2.COLOR_HSV2BGR)
+
+    def _two_tone_upper_region(self) -> tuple[np.ndarray, np.ndarray]:
+        """상의 영역(행 22:55)을 다수(60%, 저채도 s=18) + 소수(40%, 고채도 blue s=60)로
+        채운다. sat_min=25(기본)는 다수 그룹을 걸러내 소수(blue)만 남기지만, sat_min=0은
+        다수 그룹까지 포함시켜 다수결 자체를 뒤집는다 - EXP-034가 측정하려는 "sat_min을
+        낮추면 그림자/저채도 Noise를 더 많이 포함시킨다"는 메커니즘을 그대로 재현한다.
+        (h=100은 _is_skin_like 범위(h<=25) 밖이라 skin exclusion과는 독립적으로 둔다.)
+        """
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        majority = self._hsv_block(h=120, s=18, v=100, rows=33, cols=36)
+        minority = self._hsv_block(h=100, s=60, v=100, rows=33, cols=24)
+        img[22:55, :36] = majority
+        img[22:55, 36:] = minority
+        mask = np.ones((100, 60), dtype=bool)
+        return img, mask
+
+    def test_default_sat_min_filters_out_majority_low_saturation_group(self):
+        img, mask = self._two_tone_upper_region()
+        result = classify_person_attributes_with_mask_relaxed(img, mask, val_min=10)
+        assert result["upper"] == "blue"
+
+    def test_sat_min_zero_lets_majority_low_saturation_group_dominate(self):
+        img, mask = self._two_tone_upper_region()
+        result = classify_person_attributes_with_mask_relaxed(img, mask, val_min=10, sat_min=0)
+        assert result["upper"] != "blue"
+        assert result["upper"] == "gray"
+
+    def test_sat_min_relaxation_is_not_monotonic_middle_value_can_be_worse_than_both_extremes(self):
+        """EXP-034가 실측 Dataset에서 발견한 비단조(non-monotonic) 패턴을 결정론적
+        합성 픽셀로 고정한다. 진짜 검정(S=5,V=20, 50%) + 중간 채도 오염(S=15,V=100,
+        H=100, 30%) + 고채도 소수(S=80,V=100,H=0, 20%)를 섞으면:
+        - sat_min=25: 중간 오염이 필터에 걸려(S=15<25) 제외되고 고채도 소수(20%)만
+          남아 min_filtered_fraction(30%) 미달로 폴백 발동 -> 전체 픽셀 중 진짜 검정이
+          최다수(50%) -> "black"(정답).
+        - sat_min=15/10/5: 중간 오염까지 필터를 통과해(30%+20%=50%>=30%) 폴백이
+          발동하지 않고, 중간 오염이 폴백 없이 다수결에서 진짜 검정을 이김 -> "gray"
+          (오답) - 딱 그 중간 구간만 걸리는 "함정 지대".
+        - sat_min=0: 필터를 완전히 버려 모든 픽셀(진짜 검정 50% 포함)이 다수결에
+          들어가고, 진짜 검정이 다시 최다수가 되어 "black"(정답)으로 복귀한다.
+        이 U자형 패턴이 EXP-034가 "sat_min을 낮출수록 단조 개선될 것"이라는 가설을
+        반증한 실제 메커니즘이다(Hypothesis 2, experiment.md Analysis 참고).
+        """
+        img = np.zeros((100, 60, 3), dtype=np.uint8)
+        true_black = self._hsv_block(h=0, s=5, v=20, rows=33, cols=30)
+        mid_contaminant = self._hsv_block(h=100, s=15, v=100, rows=33, cols=18)
+        high_sat_minority = self._hsv_block(h=0, s=80, v=100, rows=33, cols=12)
+        img[22:55, :30] = true_black
+        img[22:55, 30:48] = mid_contaminant
+        img[22:55, 48:] = high_sat_minority
+        mask = np.ones((100, 60), dtype=bool)
+
+        at_sat_min = lambda sat_min: classify_person_attributes_with_mask_relaxed(
+            img, mask, val_min=0, sat_min=sat_min
+        )["upper"]
+
+        assert at_sat_min(25) == "black"
+        assert at_sat_min(15) == "gray"
+        assert at_sat_min(10) == "gray"
+        assert at_sat_min(0) == "black"
+
+    def test_sat_min_forwards_through_wb_variant_too(self):
+        """classify_person_attributes_with_mask_and_wb_relaxed(**kwargs)가 sat_min을
+        실제로 전달하는지, White Balance 적용 후 동일 입력에 대한 non-WB 버전과
+        동치임을 비교해 고정한다(WB 자체가 채도를 바꾸므로 색상 산출값이 아니라
+        '값이 전달된다'는 사실 자체를 검증 대상으로 삼는다)."""
+        img, mask = self._two_tone_upper_region()
+        wb_img = white_balance_gray_world(img)
+        expected = classify_person_attributes_with_mask_relaxed(wb_img, mask, val_min=10, sat_min=0)
+        actual = classify_person_attributes_with_mask_and_wb_relaxed(img, mask, val_min=10, sat_min=0)
+        assert actual == expected
 
 
 class TestClassifyPersonAttributesWithMaskAndWbRelaxed:

@@ -444,11 +444,17 @@ def classify_person_attributes_with_mask_relaxed(
     foot_skip_ratio: float = 0.08,
     min_mask_fraction: float = 0.05,
     val_min: int = 10,
+    sat_min: int = 25,
 ) -> dict[str, str]:
     """대안 A(EXP-033): classify_person_attributes_with_mask(대안 C)와 영역 분리는
     동일하게 두고, region_dominant_color의 val_min만 35->10으로 낮춘 가장 단순한
     수정이다(폴백 설계 자체는 그대로 이분법). "그림자 하한을 그냥 낮추면 되지 않을까"
     라는 가장 직관적인 첫 시도를 대안 B(graded fallback)와 비교하기 위해 둔다.
+
+    sat_min(EXP-034에서 추가 노출): val_min 완화와 별도로 채도 하한도 같이 낮춰볼 수
+    있도록 한다 - EXP-033 Next Action이 "val_min만으로는 아직 sat_min의 기여를
+    분리하지 못했다"고 남긴 것을 검증하기 위함이다. 기본값은 region_dominant_color와
+    동일(25)이라 이 파라미터를 지정하지 않으면 EXP-033 당시 동작과 완전히 같다.
     """
     if crop_bgr.size == 0 or mask.size == 0:
         return {"upper": "gray", "lower": "gray"}
@@ -464,8 +470,10 @@ def classify_person_attributes_with_mask_relaxed(
     def _resolve(region_mask: np.ndarray, fallback_region: np.ndarray) -> str:
         total = region_mask.size
         if total == 0 or region_mask.sum() < min_mask_fraction * total:
-            return region_dominant_color(fallback_region, val_min=val_min)
-        return region_dominant_color_from_pixels(crop_bgr[region_mask.astype(bool)], val_min=val_min)
+            return region_dominant_color(fallback_region, val_min=val_min, sat_min=sat_min)
+        return region_dominant_color_from_pixels(
+            crop_bgr[region_mask.astype(bool)], val_min=val_min, sat_min=sat_min
+        )
 
     return {"upper": _resolve(upper_mask, fallback_upper), "lower": _resolve(lower_mask, fallback_lower)}
 
@@ -474,7 +482,16 @@ def classify_person_attributes_with_mask_and_wb_relaxed(
     crop_bgr: np.ndarray, mask: np.ndarray, **kwargs
 ) -> dict[str, str]:
     """classify_person_attributes_with_mask_and_wb(c_wb, production)와 동일하게
-    Mask+White Balance를 적용하되, 대안 A(val_min 완화)만 추가한 변형."""
+    Mask+White Balance를 적용하되, 대안 A(val_min 완화)만 추가한 변형.
+
+    EXP-034 n=21 Sweep 결과: val_min=0/sat_min=20이 Overall/GT=black/비검정 GT
+    Accuracy 모두에서 EXP-033의 val_min=10(sat_min 기본값 25)을 역전 없이 앞선다
+    (Overall 49.05%->50.95%, GT=black 75.00%->79.00%, 비검정 GT 25.45%->25.45%).
+    sat_min은 val_min과 달리 단조가 아니라 비단조(U자형)로 작동하므로(sat_min=5~15
+    구간이 양쪽 극단보다 나쁨, experiment.md EXP-034 Result 2/3 참고) sat_min=0을
+    그냥 쓰지 않는다. 그래도 n=21/synthetic 조명 한계로 production 기본값으로는
+    아직 승격하지 않는다(GT 라벨 재검증이 선행 Next Action).
+    """
     balanced = white_balance_gray_world(crop_bgr)
     return classify_person_attributes_with_mask_relaxed(balanced, mask, **kwargs)
 
