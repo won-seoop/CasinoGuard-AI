@@ -1,0 +1,187 @@
+{
+  "n_ground_truth_crops": 21,
+  "n_cells_total": 42,
+  "n_corrections_total": 7,
+  "n_corrections_from_exp032_already_in_before": 2,
+  "n_corrections_new_in_exp035": 5,
+  "changed_cells": [
+    {
+      "name": "000000000086_0",
+      "region": "upper",
+      "old": "black",
+      "new": "white",
+      "source": "EXP-032"
+    },
+    {
+      "name": "000000000634_0",
+      "region": "upper",
+      "old": "black",
+      "new": "gray",
+      "source": "EXP-032"
+    },
+    {
+      "name": "000000000370_0",
+      "region": "upper",
+      "old": "pink",
+      "new": "white",
+      "source": "EXP-035"
+    },
+    {
+      "name": "000000000415_0",
+      "region": "lower",
+      "old": "white",
+      "new": "blue",
+      "source": "EXP-035"
+    },
+    {
+      "name": "000000000536_0",
+      "region": "upper",
+      "old": "black",
+      "new": "purple",
+      "source": "EXP-035"
+    },
+    {
+      "name": "000000000536_0",
+      "region": "lower",
+      "old": "black",
+      "new": "purple",
+      "source": "EXP-035"
+    },
+    {
+      "name": "000000000623_0",
+      "region": "lower",
+      "old": "pink",
+      "new": "black",
+      "source": "EXP-035"
+    }
+  ],
+  "per_config": {
+    "baseline_val35_sat25": {
+      "val_min": 35,
+      "sat_min": 25,
+      "before_gt_correction": {
+        "overall_accuracy": 0.4143,
+        "gt_black_accuracy": 0.6,
+        "nonblack_accuracy": 0.2455,
+        "accuracy_by_condition": {
+          "normal": {
+            "overall_accuracy": 0.4286,
+            "gt_black_accuracy": 0.65
+          },
+          "low_light": {
+            "overall_accuracy": 0.4762,
+            "gt_black_accuracy": 0.95
+          },
+          "strong_light": {
+            "overall_accuracy": 0.3571,
+            "gt_black_accuracy": 0.2
+          },
+          "warm_cast": {
+            "overall_accuracy": 0.4048,
+            "gt_black_accuracy": 0.6
+          },
+          "cool_cast": {
+            "overall_accuracy": 0.4048,
+            "gt_black_accuracy": 0.6
+          }
+        }
+      },
+      "after_gt_correction": {
+        "overall_accuracy": 0.4143,
+        "gt_black_accuracy": 0.6105,
+        "nonblack_accuracy": 0.2522,
+        "accuracy_by_condition": {
+          "normal": {
+            "overall_accuracy": 0.4286,
+            "gt_black_accuracy": 0.6842
+          },
+          "low_light": {
+            "overall_accuracy": 0.4524,
+            "gt_black_accuracy": 0.9474
+          },
+          "strong_light": {
+            "overall_accuracy": 0.4048,
+            "gt_black_accuracy": 0.2105
+          },
+          "warm_cast": {
+            "overall_accuracy": 0.381,
+            "gt_black_accuracy": 0.5789
+          },
+          "cool_cast": {
+            "overall_accuracy": 0.4048,
+            "gt_black_accuracy": 0.6316
+          }
+        }
+      },
+      "delta": {
+        "overall_accuracy": 0.0,
+        "gt_black_accuracy": 0.0105,
+        "nonblack_accuracy": 0.0067
+      }
+    },
+    "candidate_val0_sat20": {
+      "val_min": 0,
+      "sat_min": 20,
+      "before_gt_correction": {
+        "overall_accuracy": 0.5095,
+        "gt_black_accuracy": 0.79,
+        "nonblack_accuracy": 0.2545,
+        "accuracy_by_condition": {
+          "normal": {
+            "overall_accuracy": 0.5714,
+            "gt_black_accuracy": 0.9
+          },
+          "low_light": {
+            "overall_accuracy": 0.4762,
+            "gt_black_accuracy": 1.0
+          },
+          "strong_light": {
+            "overall_accuracy": 0.381,
+            "gt_black_accuracy": 0.25
+          },
+          "warm_cast": {
+            "overall_accuracy": 0.5476,
+            "gt_black_accuracy": 0.9
+          },
+          "cool_cast": {
+            "overall_accuracy": 0.5714,
+            "gt_black_accuracy": 0.9
+          }
+        }
+      },
+      "after_gt_correction": {
+        "overall_accuracy": 0.5,
+        "gt_black_accuracy": 0.7895,
+        "nonblack_accuracy": 0.2609,
+        "accuracy_by_condition": {
+          "normal": {
+            "overall_accuracy": 0.5476,
+            "gt_black_accuracy": 0.8947
+          },
+          "low_light": {
+            "overall_accuracy": 0.4524,
+            "gt_black_accuracy": 1.0
+          },
+          "strong_light": {
+            "overall_accuracy": 0.4286,
+            "gt_black_accuracy": 0.2632
+          },
+          "warm_cast": {
+            "overall_accuracy": 0.5238,
+            "gt_black_accuracy": 0.8947
+          },
+          "cool_cast": {
+            "overall_accuracy": 0.5476,
+            "gt_black_accuracy": 0.8947
+          }
+        }
+      },
+      "delta": {
+        "overall_accuracy": -0.0095,
+        "gt_black_accuracy": -0.0005,
+        "nonblack_accuracy": 0.0064
+      }
+    }
+  },
+  "candidate_still_beats_baseline_after_gt_correction": true
+}

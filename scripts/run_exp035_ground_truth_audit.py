@@ -73,6 +73,12 @@ LIGHTING_CONDITIONS = ["normal", "low_light", "strong_light", "warm_cast", "cool
 VAL_MIN = 0
 SAT_MIN = 20
 
+# EXP-033 이전부터 쓰던 production 기본값(region_dominant_color의 원래 shadow/highlight
+# 컷오프). GT 교정이 "val_min=0/sat_min=20이 baseline보다 낫다"는 EXP-034의 결론
+# 자체를 뒤집는지 확인하기 위한 비교 대상.
+VAL_MIN_BASELINE = 35
+SAT_MIN_BASELINE = 25
+
 # EXP-035 이전까지 6개 스크립트에 흩어져 있던 "GT" 중 EXP-033/EXP-034가 실제로 쓴
 # 버전(EXP-032의 2건 교정만 반영, 이번 EXP-035의 5건 신규 교정은 미반영) -
 # Before 비교의 기준점. evaluation/ 모듈이 생기기 전 마지막 GT 상태를 그대로 보존한다.
@@ -233,54 +239,94 @@ def main() -> None:
     if missing:
         raise RuntimeError(f"GT names missing from detected crops (detector mismatch?): {missing}")
 
-    # 예측은 GT 교정과 무관하게 동일(예측 파이프라인은 손대지 않았다) -
-    # (name, condition, region) -> pred_color 한 번만 계산해 Before/After에 공유한다.
-    preds: dict[tuple[str, str, str], str] = {}
+    # 예측은 GT 교정과 무관하게 동일(예측 파이프라인은 손대지 않았다) - config별로
+    # (name, condition, region) -> pred_color를 한 번만 계산해 Before/After에 공유한다.
+    # EXP-034의 최종 후보(candidate)뿐 아니라 그 이전 production 기본값(baseline)도
+    # 함께 측정해, GT 교정이 "candidate가 baseline보다 낫다"는 EXP-034의 순위 결론
+    # 자체를 뒤집는지 확인한다.
+    configs = {
+        "baseline_val35_sat25": (VAL_MIN_BASELINE, SAT_MIN_BASELINE),
+        "candidate_val0_sat20": (VAL_MIN, SAT_MIN),
+    }
+    preds_by_config: dict[str, dict[tuple[str, str, str], str]] = {k: {} for k in configs}
     pred_rows: list[dict] = []
     for name in GROUND_TRUTH:
         mask = masks[name]
         for condition in LIGHTING_CONDITIONS:
             lit = apply_lighting(crops[name], condition)
-            pred = classify_person_attributes_with_mask_and_wb_relaxed(lit, mask, val_min=VAL_MIN, sat_min=SAT_MIN)
+            row_preds = {}
+            for cfg_name, (val_min, sat_min) in configs.items():
+                pred = classify_person_attributes_with_mask_and_wb_relaxed(lit, mask, val_min=val_min, sat_min=sat_min)
+                for region in ("upper", "lower"):
+                    preds_by_config[cfg_name][(name, condition, region)] = pred[region]
+                row_preds[cfg_name] = pred
             for region in ("upper", "lower"):
-                preds[(name, condition, region)] = pred[region]
                 pred_rows.append(
                     {
                         "name": name,
                         "region": region,
                         "condition": condition,
-                        "pred_color": pred[region],
+                        "pred_baseline": row_preds["baseline_val35_sat25"][region],
+                        "pred_candidate": row_preds["candidate_val0_sat20"][region],
                         "gt_before": GROUND_TRUTH_BEFORE[name][region],
                         "gt_after": GROUND_TRUTH[name][region],
                         "gt_changed": int(GROUND_TRUTH_BEFORE[name][region] != GROUND_TRUTH[name][region]),
-                        "correct_before": int(pred[region] == GROUND_TRUTH_BEFORE[name][region]),
-                        "correct_after": int(pred[region] == GROUND_TRUTH[name][region]),
+                        "correct_baseline_before": int(
+                            row_preds["baseline_val35_sat25"][region] == GROUND_TRUTH_BEFORE[name][region]
+                        ),
+                        "correct_baseline_after": int(
+                            row_preds["baseline_val35_sat25"][region] == GROUND_TRUTH[name][region]
+                        ),
+                        "correct_candidate_before": int(
+                            row_preds["candidate_val0_sat20"][region] == GROUND_TRUTH_BEFORE[name][region]
+                        ),
+                        "correct_candidate_after": int(
+                            row_preds["candidate_val0_sat20"][region] == GROUND_TRUTH[name][region]
+                        ),
                     }
                 )
-
-    before = _score(GROUND_TRUTH_BEFORE, preds)
-    after = _score(GROUND_TRUTH, preds)
 
     changed_cells = [
         {"name": c["name"], "region": c["region"], "old": c["old"], "new": c["new"], "source": c["source"]}
         for c in CORRECTIONS
     ]
 
+    per_config_summary = {}
+    for cfg_name, (val_min, sat_min) in configs.items():
+        preds = preds_by_config[cfg_name]
+        before = _score(GROUND_TRUTH_BEFORE, preds)
+        after = _score(GROUND_TRUTH, preds)
+        per_config_summary[cfg_name] = {
+            "val_min": val_min,
+            "sat_min": sat_min,
+            "before_gt_correction": before,
+            "after_gt_correction": after,
+            "delta": {
+                "overall_accuracy": round(after["overall_accuracy"] - before["overall_accuracy"], 4),
+                "gt_black_accuracy": round(
+                    (after["gt_black_accuracy"] or 0) - (before["gt_black_accuracy"] or 0), 4
+                ),
+                "nonblack_accuracy": round(
+                    (after["nonblack_accuracy"] or 0) - (before["nonblack_accuracy"] or 0), 4
+                ),
+            },
+        }
+
+    candidate_after = per_config_summary["candidate_val0_sat20"]["after_gt_correction"]
+    baseline_after = per_config_summary["baseline_val35_sat25"]["after_gt_correction"]
+    ranking_preserved = candidate_after["overall_accuracy"] >= baseline_after["overall_accuracy"] and (
+        candidate_after["gt_black_accuracy"] or 0
+    ) >= (baseline_after["gt_black_accuracy"] or 0)
+
     summary = {
-        "config": {"val_min": VAL_MIN, "sat_min": SAT_MIN, "method": "c_wb_relaxed"},
         "n_ground_truth_crops": len(GROUND_TRUTH),
         "n_cells_total": len(GROUND_TRUTH) * 2,
         "n_corrections_total": len(CORRECTIONS),
         "n_corrections_from_exp032_already_in_before": sum(1 for c in CORRECTIONS if c["source"] == "EXP-032"),
         "n_corrections_new_in_exp035": sum(1 for c in CORRECTIONS if c["source"] == "EXP-035"),
         "changed_cells": changed_cells,
-        "before_gt_correction": before,
-        "after_gt_correction": after,
-        "delta": {
-            "overall_accuracy": round(after["overall_accuracy"] - before["overall_accuracy"], 4),
-            "gt_black_accuracy": round((after["gt_black_accuracy"] or 0) - (before["gt_black_accuracy"] or 0), 4),
-            "nonblack_accuracy": round((after["nonblack_accuracy"] or 0) - (before["nonblack_accuracy"] or 0), 4),
-        },
+        "per_config": per_config_summary,
+        "candidate_still_beats_baseline_after_gt_correction": ranking_preserved,
     }
 
     with open(RESULTS_DIR / "summary.json", "w", encoding="utf-8") as f:

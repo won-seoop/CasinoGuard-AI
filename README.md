@@ -268,6 +268,30 @@ Sweep한 두 번째 실험은 "낮출수록 좋아질 것"이라는 가설이 **
 다른 파라미터에 그대로 가정하지 않는다"는 재사용 가능한 원칙을 남기고 production
 승격은 여전히 보류했다(`PAR-025`).
 
+### GT 라벨 21 crop × 42 영역 전수 재검증 - 틀린 라벨이 모델 편향과 같은 방향이면 Accuracy를 거짓으로 검증해준다 (Stretch, EXP-035, **PAR-026**)
+
+EXP-032부터 3회 이월됐던 "GT 라벨 21개 crop × 42개 영역 전체 재검증"을 실제로
+수행했다. EXP-032는 오분류로 보고된 110셀 중 10셀(normal 조건)만 육안
+재확인했는데, 이 범위는 "GT가 틀렸는데 classifier와 우연히 일치해 정답으로
+집계된 셀"을 원천적으로 볼 수 없다는 사각지대가 있었다. `results/EXP-027/
+crops/*.jpg` 21개 전체를 3배 Upscale해 42개 라벨 전부를 처음부터 재검토한 결과
+신규 오류 5건(370_0 upper pink→white, 415_0 lower white→blue, 536_0 upper/lower
+black→purple, 623_0 lower pink→black - 인접 인물 옷 Bleed)을 추가로 발견했다
+(기존 EXP-032의 2건과 합쳐 7/42=16.7%). 동시에 `GROUND_TRUTH`가 6개 스크립트
+(EXP-027/028/030/031/032/033/034)에 복사-붙여넣기되어 있어, EXP-032 자신을
+포함한 5개 스크립트에는 그 교정 2건조차 반영되지 않은 Drift가 실제로 존재함을
+`grep` 대조로 확인했다. `evaluation/attribute_color/coco128_ground_truth.py`를
+단일 진실 공급원으로 신설해 교체했다. 교정된 GT로 EXP-034의 최종 후보
+(val_min=0, sat_min=20)를 재측정하니 "교정하면 개선될 것"이라는 가설이 **반증**
+됐다(Overall 50.95%→**50.00%**, -0.95pp) - 원인은 `000000000536_0`(와인색
+원피스)의 틀린 `black` 라벨이 candidate config의 "어두우면 black으로 분류"하는
+체계적 편향과 우연히 일치해 10개 cell 중 8개를 부당하게 "정답"으로 집계하고
+있었기 때문이다. 그래도 candidate가 baseline(val_min=35, sat_min=25)을 역전
+없이 지배한다는 **순위 결론은 유지**됐다(Overall 50.00%>41.43%, GT=black
+78.95%>61.05%, 비검정 GT 26.09%>25.22%) - 다만 candidate의 우위 폭은 라벨
+오류로 일부 부풀려져 있었다는 것을 정량적으로 확인했다. production 승격은
+여전히 보류했다(`PAR-026`).
+
 ## 12. Performance Benchmark (EXP-008)
 
 | 단계 | FPS | P95 Latency |
@@ -293,7 +317,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 | FC-009 | Circular Buffer가 원본 BGR 프레임을 무압축 버퍼링해 채널당 628~753MB 필요 | **PAR-012로 수정 완료** |
 | FC-010 | Adaptive Recording+Circular Buffer 통합 시 Post-Roll이 영상/세션 종료 전에 끝나지 않으면 Event Clip이 잘림 | `truncated_at_video_end` 플래그로 명시 처리(EXP-023), Edge Camera 재시작 시 재현 가능성은 백로그 |
 | FC-011 | VMS Search API가 raw SQL로 `event_clip_path`가 담긴 `detail`을 파싱하지 않고 그대로 반환 + Event Clip 재생 엔드포인트 자체가 없었음 | **PAR-015로 수정 완료** |
-| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. **EXP-030/PAR-021**: Gamma Correction 대안 A(crop 자체 밝기)는 confound로 전체 Accuracy 붕괴(기각), 대안 B(배경 기반)는 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선했으나 synthetic Benchmark 한계로 `low_light`에 새 Regression 발생. **EXP-031/PAR-022**: Frame 노출/Cast 기반 confidence 표시도 가설과 정반대로 반증(unflagged Accuracy가 flagged보다 낮음). **EXP-032/PAR-023**: 더 이상 새 보정을 추가하지 않고 오분류 자체를 Hue 다수결 중간값 단위로 직접 진단 — "검정→blue" 프레이밍은 실제 오분류의 29.9~44.9%만 설명하고, 조명 무변형(normal) 상태에서도 40%대가 오분류되며, 오분류의 35~40%가 filter 폴백 경로에서 발생함을 확인(조명 보정 4종이 거의 효과 없었던 이유를 실측으로 설명). GT 라벨 오류 2건도 발견해 교정 재측정(normal Accuracy +5.5~5.9pp). **EXP-033/PAR-024**: filter 폴백 경로를 "정교하게"(val_min 단계적 완화) 재설계한 대안 B가 오히려 Overall Accuracy를 악화시킴(41.43%→36.67%) — 더 "거친" 수정(val_min 35→10 단순 완화, 대안 A)이 Overall 49.05%(+7.6pp)/GT=black 75.00%(+15.0pp)로 개선, 이득의 대부분이 Error Analysis가 제외했던 "폴백 미발동" cell에서 나왔음을 확인. **EXP-034/PAR-025**: val_min=10을 실제 Mask+WB 경로에서 재검증하니 val_min=0이 더 나음(Overall 50.48%/GT=black 79.00%)을 확인(가설 확인), 같은 방식의 sat_min Sweep은 비단조(U자형)로 반증되어 Baseline을 역전 없이 지배하는 sat_min=20만 추가 채택(val_min=0+sat_min=20 → Overall 50.95%/GT=black 79.00%). 두 실험 모두 n=21 한계로 production 미연결 유지 |
+| FC-012 | Attribute 색상 분류에서 검정 옷이 `strong_light`/`cool_cast` 조명 하에서 반복적으로 `blue`로 오분류됨 | **EXP-026/PAR-017로 재검토**: Gray World WB는 `cool_cast`(채널 비율 Cast)만 부분 개선하고 `strong_light`(노출/대비 손실)는 악화시킴 — 겨냥한 검정 GT 셀 전체 Accuracy는 변화 없음(15/35→15/35). **EXP-027/PAR-018**: 제안된 "무채색 확신도" 대안도 신호(채도/raw BGR std)가 achromatic/chromatic을 분리 못 해 보류. **EXP-028/PAR-019**: Segmentation Mask(대안 C)도 `cool_cast`를 단독으로는 개선 못 함(50.0%, b_wb보다 나쁨) — Mask+WB 결합(c_wb)으로 `cool_cast`는 b_wb 수준(22.7%) 유지하지만 `strong_light`는 그대로. **EXP-030/PAR-021**: Gamma Correction 대안 A(crop 자체 밝기)는 confound로 전체 Accuracy 붕괴(기각), 대안 B(배경 기반)는 `strong_light`→blue 오분류율을 18.2%→4.6%(최저)로 개선했으나 synthetic Benchmark 한계로 `low_light`에 새 Regression 발생. **EXP-031/PAR-022**: Frame 노출/Cast 기반 confidence 표시도 가설과 정반대로 반증(unflagged Accuracy가 flagged보다 낮음). **EXP-032/PAR-023**: 더 이상 새 보정을 추가하지 않고 오분류 자체를 Hue 다수결 중간값 단위로 직접 진단 — "검정→blue" 프레이밍은 실제 오분류의 29.9~44.9%만 설명하고, 조명 무변형(normal) 상태에서도 40%대가 오분류되며, 오분류의 35~40%가 filter 폴백 경로에서 발생함을 확인(조명 보정 4종이 거의 효과 없었던 이유를 실측으로 설명). GT 라벨 오류 2건도 발견해 교정 재측정(normal Accuracy +5.5~5.9pp). **EXP-033/PAR-024**: filter 폴백 경로를 "정교하게"(val_min 단계적 완화) 재설계한 대안 B가 오히려 Overall Accuracy를 악화시킴(41.43%→36.67%) — 더 "거친" 수정(val_min 35→10 단순 완화, 대안 A)이 Overall 49.05%(+7.6pp)/GT=black 75.00%(+15.0pp)로 개선, 이득의 대부분이 Error Analysis가 제외했던 "폴백 미발동" cell에서 나왔음을 확인. **EXP-034/PAR-025**: val_min=10을 실제 Mask+WB 경로에서 재검증하니 val_min=0이 더 나음(Overall 50.48%/GT=black 79.00%)을 확인(가설 확인), 같은 방식의 sat_min Sweep은 비단조(U자형)로 반증되어 Baseline을 역전 없이 지배하는 sat_min=20만 추가 채택(val_min=0+sat_min=20 → Overall 50.95%/GT=black 79.00%). 두 실험 모두 n=21 한계로 production 미연결 유지. **EXP-035/PAR-026**: 3회 이월된 GT 42 영역 전수 재검증을 수행해 신규 라벨 오류 5건 발견(기존 2건과 합쳐 7/42=16.7%) + GROUND_TRUTH가 6개 스크립트에 복사-붙여넣기되어 EXP-032의 교정조차 5개 스크립트에 전파 안 된 Drift 확인, `evaluation/attribute_color/coco128_ground_truth.py` 단일 진실 공급원으로 교체. 교정된 GT로 재측정하니 Overall Accuracy가 오히려 50.95%→50.00%로 하락(가설 반증) — 원인은 와인색 원피스(536_0)의 틀린 `black` 라벨이 candidate config의 "어두우면 black" 편향과 우연히 일치해 Accuracy를 부당하게 높이고 있었기 때문. candidate가 baseline을 역전 없이 지배한다는 순위 결론은 유지되지만 우위 폭(GT=black)은 19.00pp→17.90pp로 축소 — 라벨 오류가 모델 편향과 같은 방향이면 Accuracy를 거짓으로 검증해줄 수 있다는 교훈 |
 
 ## 14. 주요 기술 의사결정
 
@@ -329,6 +353,7 @@ MacBook Air M3에서 원본 영상 FPS(24~30)보다 빠르게 전체 파이프�
 - **PAR-023**: FC-012를 겨냥한 조명 보정 4종+confidence 신호 2종이 모두 실패한 이유를, 새 보정을 추가하는 대신 오분류 자체를 Hue 다수결 중간값(필터 폴백 여부/예측 색 분포/margin) 단위로 직접 진단해 찾음 → "검정→blue" 프레이밍은 오분류의 29.9~44.9%만 설명했고, 조명 무변형(normal) 상태에서도 40%대가 오분류됐으며, 오분류의 35~40%가 PAR-016 filter 폴백 경로에서 발생함을 확인(조명 보정이 거의 효과 없었던 이유를 실측으로 설명). 부수적으로 GT 라벨 오류 2건도 발견해 교정 재측정(normal Accuracy +5.5~5.9pp, 과거 PAR들의 상대적 순위는 불변). 다음 방향을 "filter 폴백 경로 재설계"로 구체화
 - **PAR-024**: PAR-023의 Error Analysis가 가리킨 filter 폴백 경로를 "정교하게"(val_min 단계적 완화 35→15→0, 대안 B) 재설계했더니 production Overall Accuracy가 오히려 41.43%→36.67%로 악화됨 → 더 "거친" 수정(val_min을 그냥 35→10으로 완화, 대안 A)이 Overall 49.05%(+7.6pp)/GT=black 75.00%(+15.0pp)로 개선 - 이득의 대부분(+31.1pp)이 EXP-032 분석이 제외한 "폴백 미발동" cell에서 나왔음을 직접 슬라이싱으로 확인(정교한 진단이 가리킨 narrow한 수정이 더 거친 수정보다 못할 수 있다는 교훈)
 - **PAR-025**: PAR-024의 val_min=10 선택을 근사(Mask/WB 제외)로만 검증했던 한계를 메우기 위해 실제 production 경로(Mask+WB 포함)에서 val_min=0까지 직접 재측정하니 Overall 49.05%→50.95%로 더 개선됨을 확인(가설 확인) → 반면 같은 방식으로 sat_min(채도 하한)을 낮추는 두 번째 실험은 "낮출수록 좋아질 것"이라는 가설이 반증되어 비단조(U자형, sat_min=5~15 구간이 양쪽 극단보다 나쁨) 패턴을 발견 - 모든 지표에서 Baseline을 역전 없이 지배하는 sat_min=20만 추가로 채택(val_min 단조 추세를 다른 유사 파라미터에 그대로 가정하지 않는다는 원칙 확립)
+- **PAR-026**: 3회 이월된 GT 라벨 21 crop × 42 영역 전수 재검증(오분류 보고 셀만 보던 EXP-032의 사각지대를 포함) → 신규 라벨 오류 5건 발견 + GROUND_TRUTH 6개 스크립트 복사-붙여넣기 Drift(EXP-032 자신의 교정조차 5개 스크립트에 미반영) 확인, 단일 진실 공급원 모듈로 교체 → 교정된 GT로 production 후보를 재측정하니 Overall Accuracy가 오히려 50.95%→50.00%로 하락(가설 반증, 와인색 원피스의 틀린 black 라벨이 모델의 black 예측 편향과 우연히 일치해 Accuracy를 부풀리고 있었음) → candidate가 baseline을 역전 없이 지배한다는 순위 결론은 유지되지만 우위 폭은 19.00pp→17.90pp로 축소(GT 라벨 오류가 모델 편향과 같은 방향이면 Accuracy를 거짓으로 검증해줄 수 있다는 교훈)
 
 ## 16. Long Running Test (EXP-010, PAR-004)
 
@@ -405,6 +430,7 @@ python scripts/run_exp031_attribute_confidence_flag.py           # FC-012 구간
 python scripts/run_exp032_attribute_black_error_analysis.py      # GT=black 오분류 Hue 다수결 단위 Error Analysis + GT 라벨 오류 교정 (PAR-023)
 python scripts/run_exp033_fallback_redesign.py                   # filter 폴백 재설계 val_min 완화(A) vs 단계적 폴백(B) 비교 (PAR-024)
 python scripts/run_exp034_val_min_zero_sat_min_sweep.py          # val_min=0 실제 파이프라인 재검증 + sat_min Sweep (PAR-025)
+python scripts/run_exp035_ground_truth_audit.py                  # GT 21 crop x 42 영역 전수 재검증 + 단일 진실 공급원 전환 (PAR-026)
 
 # 통합 파이프라인 + VMS Search API
 python scripts/run_full_pipeline.py
@@ -427,9 +453,10 @@ cctv/
     metadata/             # Metadata Store (SQLite)
     attributes/           # 상/하의 색상 분류 (EXP-025~029) + pipeline.py(Track당 1회 호출, PAR-020)
     api/                  # VMS Search API (FastAPI)
-  scripts/                # EXP-001~032 실행 스크립트 + 통합 파이프라인
-  tests/                  # Unit Test 200개 이상
-  experiments/            # EXP-001~032, PAR-001~023 기록
+  evaluation/             # Ground Truth 단일 진실 공급원 (attribute_color/coco128_ground_truth.py, EXP-035, PAR-026)
+  scripts/                # EXP-001~035 실행 스크립트 + 통합 파이프라인
+  tests/                  # Unit Test 270개 이상
+  experiments/            # EXP-001~035, PAR-001~026 기록
   results/                # 실행 결과(CSV, 스냅샷, BestShot 그리드)
   data/                   # raw/test 영상 (대용량은 git 제외)
 ```
