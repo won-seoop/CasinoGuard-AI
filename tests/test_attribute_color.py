@@ -21,6 +21,7 @@ from src.attributes.color import (
     estimate_gamma_from_reference,
     frame_channel_cast_deviation,
     frame_mean_brightness,
+    gamma_background_then_white_balance,
     region_color_signal,
     region_dominant_color,
     region_dominant_color_diagnostic,
@@ -803,6 +804,42 @@ class TestAdaptiveGammaCorrectFromBackground:
         normal_background = solid_bgr((128, 128, 128))
         corrected = adaptive_gamma_correct_from_background(dark_crop, normal_background)
         assert np.array_equal(corrected, dark_crop)
+
+
+class TestGammaBackgroundThenWhiteBalance:
+    """EXP-038: Re-ID FC-013(b) warm_cast/cool_cast 검증을 위한 Gamma-Background+WB
+    조합(gamma 먼저, WB 나중 - EXP-030 b_wb_gamma와 동일한 순서)."""
+
+    def test_equals_manual_composition(self):
+        """순서가 명세대로(gamma 먼저 -> WB 나중)인지, 수동 합성과 동일한지 확인한다."""
+        crop = np.random.default_rng(0).integers(0, 255, size=(20, 20, 3), dtype=np.uint8)
+        background = solid_bgr((60, 90, 150))  # cool_cast 유사 배경(B 채널이 큼)
+        expected = white_balance_gray_world(adaptive_gamma_correct_from_background(crop, background))
+        actual = gamma_background_then_white_balance(crop, background)
+        assert np.array_equal(actual, expected)
+
+    def test_overexposed_background_still_darkens_crop_after_wb(self):
+        """Gamma 보정 방향(adaptive_gamma_correct_from_background의 기존 검증된 동작 -
+        배경이 과다노출이면 crop을 더 어둡게 보정)이 WB를 거친 뒤에도 뒤집히지 않는지
+        확인한다(두 보정이 서로를 상쇄해 방향 자체가 반전되면 안 된다는 최소 Sanity
+        Check). 완전한 0으로 Clip되는 극단값은 WB가 항등 연산이 되어 방향성 검증에
+        쓸모가 없으므로(0*gain=0), 중간값을 사용한다."""
+        crop = solid_bgr((60, 50, 55))
+        overexposed_background = solid_bgr((190, 195, 185))
+        gamma_then_wb = gamma_background_then_white_balance(crop, overexposed_background)
+        assert gamma_then_wb.mean() < crop.mean()  # 어둡게 보정되는 방향 유지
+
+    def test_cool_cast_background_reduces_blue_dominance_after_wb(self):
+        """Cast가 있는 배경(B 채널이 큼, cool_cast 유사)에서도 WB 단계가 crop의 채널 간
+        상대적 편향을 완화하는지 확인한다(Gamma 단독으로는 채널 간 비율이 보존되므로
+        Cast가 그대로 남아야 하고, WB가 추가된 뒤에만 줄어들어야 한다)."""
+        crop = solid_bgr((180, 100, 100))  # B가 상대적으로 큰 crop(cast 유사)
+        cool_background = solid_bgr((160, 100, 90))
+        gamma_only = adaptive_gamma_correct_from_background(crop, cool_background)
+        gamma_then_wb = gamma_background_then_white_balance(crop, cool_background)
+        b_minus_r_gamma_only = int(gamma_only[0, 0, 0]) - int(gamma_only[0, 0, 2])
+        b_minus_r_gamma_then_wb = int(gamma_then_wb[0, 0, 0]) - int(gamma_then_wb[0, 0, 2])
+        assert b_minus_r_gamma_then_wb < b_minus_r_gamma_only
 
 
 class TestFrameMeanBrightness:

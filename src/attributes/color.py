@@ -174,6 +174,31 @@ def adaptive_gamma_correct_from_background(
     return apply_gamma(crop_bgr, gamma)
 
 
+def gamma_background_then_white_balance(
+    crop_bgr: np.ndarray,
+    background_bgr: np.ndarray,
+    target_mean: float = 128.0,
+    gamma_min: float = 0.4,
+    gamma_max: float = 2.5,
+) -> np.ndarray:
+    """EXP-038(Re-ID FC-013(b) warm_cast/cool_cast 저하 검증용): Re-ID에서 이미 검증된
+    배경 기반 Gamma 보정(EXP-037 대안 B, adaptive_gamma_correct_from_background - 전역
+    노출 변화인 low_light/strong_light Top-1을 개선함)에, Attribute 분류에서 채널 Cast를
+    완화한 White Balance(EXP-026 대안 B, white_balance_gray_world)를 EXP-030의
+    b_wb_gamma와 동일한 순서(감마 먼저, WB 나중)로 추가 적용한다.
+
+    감마(전역 노출)와 WB(채널 간 상대적 Cast)는 서로 다른 원인을 겨냥하므로 합쳐질
+    것이라는 가설이지만, EXP-031에서 "다른 Task(Attribute)에서 검증된 보정이 이 Task
+    (Re-ID)에도 그대로 통할 것"이라는 가정이 반증된 전례가 있어(EXP-037 자체도 그
+      반대 사례), EXP-038에서 warm_cast/cool_cast Top-1이 실제로 개선되는지, 그리고
+    이미 개선된 low_light/strong_light와 기하 변형(occlusion/bbox_jitter/flip)에
+    회귀가 없는지 실측하기 전까지 production(src/reid, run_full_pipeline.py)에는
+    연결하지 않는다.
+    """
+    gamma_corrected = adaptive_gamma_correct_from_background(crop_bgr, background_bgr, target_mean, gamma_min, gamma_max)
+    return white_balance_gray_world(gamma_corrected)
+
+
 def whole_bbox_mean_color(crop_bgr: np.ndarray) -> str:
     """Baseline: bbox 전체 픽셀의 평균 BGR -> HSV 변환 -> 분류. 상/하의 구분 없음."""
     if crop_bgr.size == 0:
