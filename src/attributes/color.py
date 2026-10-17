@@ -95,6 +95,48 @@ def white_balance_gray_world(crop_bgr: np.ndarray, gain_min: float = 0.3, gain_m
     return np.clip(corrected, 0, 255).astype(np.uint8)
 
 
+def white_balance_gray_world_masked(
+    crop_bgr: np.ndarray,
+    mask: np.ndarray,
+    gain_min: float = 0.3,
+    gain_max: float = 3.0,
+    min_mask_fraction: float = 0.05,
+) -> np.ndarray:
+    """white_balance_gray_world()와 동일한 Gray World 보정이지만, 채널 평균을 crop
+    전체가 아니라 person Segmentation Mask(mask==True) 픽셀만으로 계산한다
+    (FC-014, EXP-039 검토).
+
+    EXP-038(gamma_background_then_white_balance)의 white_balance_gray_world()는 crop
+    전체 픽셀(배경 Bleed + Occlusion으로 덮인 중립 회색 영역 포함)의 평균을 "중립 회색"
+    기준으로 삼는다. EXP-038에서 발견한 FC-014(Occlusion Top-1이 세 방법 모두에서
+    일관되게 악화)의 원인 가설은, 중립 회색 Occlusion 패치가 이 전체 평균에 섞여 들어가
+    실제 옷 색상 영역의 채널 비율과 다른 게인을 계산하게 만든다는 것이다. mask로 person
+    픽셀만 추려 평균을 계산하면 이 오염을 줄일 수 있는지 검증하기 위한 대안이다.
+
+    mask가 비어 있거나(Segmentation 매칭 실패) 유효 픽셀이 min_mask_fraction 미만이면
+    (예: crop 전체가 Occlusion으로 덮여 mask도 거의 다 걷힌 경우) 평균을 신뢰할 수 없다고
+    보고 white_balance_gray_world()(전체 픽셀 기준)로 폴백한다 - classify_person_attributes_with_mask_relaxed()의
+    min_mask_fraction 폴백과 동일한 설계.
+
+    주의(이 함수 자체가 이미 경계하는 한계): Occlusion 패치가 crop 내부에 있으면
+    Segmentation 모델이 occluded person도 하나의 인물 Instance로 인식해 mask가 패치
+    영역까지 포함할 수 있다 - 이 경우 masking은 패치를 걸러내지 못하고 효과가 없다
+    (실측은 EXP-039 참고, 가설 반증 가능성을 명시적으로 열어둔다).
+    """
+    if crop_bgr.size == 0:
+        return crop_bgr
+    if mask.size == 0 or mask.sum() < min_mask_fraction * mask.size:
+        return white_balance_gray_world(crop_bgr, gain_min, gain_max)
+    img = crop_bgr.astype(np.float32)
+    masked_pixels = img[mask.astype(bool)]
+    channel_means = masked_pixels.reshape(-1, 3).mean(axis=0)
+    overall_mean = channel_means.mean()
+    gains = overall_mean / np.clip(channel_means, 1.0, None)
+    gains = np.clip(gains, gain_min, gain_max)
+    corrected = img * gains.reshape(1, 1, 3)
+    return np.clip(corrected, 0, 255).astype(np.uint8)
+
+
 def estimate_gamma_from_reference(
     reference_bgr: np.ndarray,
     target_mean: float = 128.0,
@@ -197,6 +239,22 @@ def gamma_background_then_white_balance(
     """
     gamma_corrected = adaptive_gamma_correct_from_background(crop_bgr, background_bgr, target_mean, gamma_min, gamma_max)
     return white_balance_gray_world(gamma_corrected)
+
+
+def gamma_background_then_white_balance_masked(
+    crop_bgr: np.ndarray,
+    background_bgr: np.ndarray,
+    mask: np.ndarray,
+    target_mean: float = 128.0,
+    gamma_min: float = 0.4,
+    gamma_max: float = 2.5,
+) -> np.ndarray:
+    """gamma_background_then_white_balance()와 동일한 순서(감마 먼저 -> WB 나중)이지만
+    WB 단계를 white_balance_gray_world_masked()로 교체해 person Segmentation Mask
+    픽셀만으로 Gray World 평균을 계산한다 (FC-014, EXP-039 검토 대상).
+    """
+    gamma_corrected = adaptive_gamma_correct_from_background(crop_bgr, background_bgr, target_mean, gamma_min, gamma_max)
+    return white_balance_gray_world_masked(gamma_corrected, mask)
 
 
 def whole_bbox_mean_color(crop_bgr: np.ndarray) -> str:

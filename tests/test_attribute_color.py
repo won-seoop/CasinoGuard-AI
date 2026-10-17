@@ -22,6 +22,7 @@ from src.attributes.color import (
     frame_channel_cast_deviation,
     frame_mean_brightness,
     gamma_background_then_white_balance,
+    gamma_background_then_white_balance_masked,
     region_color_signal,
     region_dominant_color,
     region_dominant_color_diagnostic,
@@ -33,6 +34,7 @@ from src.attributes.color import (
     split_upper_lower,
     split_upper_lower_by_mask,
     white_balance_gray_world,
+    white_balance_gray_world_masked,
     whole_bbox_mean_color,
 )
 
@@ -840,6 +842,90 @@ class TestGammaBackgroundThenWhiteBalance:
         b_minus_r_gamma_only = int(gamma_only[0, 0, 0]) - int(gamma_only[0, 0, 2])
         b_minus_r_gamma_then_wb = int(gamma_then_wb[0, 0, 0]) - int(gamma_then_wb[0, 0, 2])
         assert b_minus_r_gamma_then_wb < b_minus_r_gamma_only
+
+
+class TestWhiteBalanceGrayWorldMasked:
+    """EXP-039: FC-014(Re-ID Occlusion Top-1 저하) 검증 - Gray World 평균 계산을 person
+    Segmentation Mask 픽셀에만 한정한다."""
+
+    def test_equals_unmasked_when_mask_is_all_true(self):
+        crop = solid_bgr((180, 100, 100))
+        mask = np.ones(crop.shape[:2], dtype=bool)
+        assert np.array_equal(white_balance_gray_world_masked(crop, mask), white_balance_gray_world(crop))
+
+    def test_falls_back_to_unmasked_when_mask_coverage_below_min_fraction(self):
+        """Segmentation 매칭 실패 등으로 mask가 거의 비어 있으면(기본 min_mask_fraction=0.05
+        미달) 평균을 신뢰할 수 없다고 보고 전체 픽셀 기준(white_balance_gray_world)으로
+        폴백한다 - classify_person_attributes_with_mask_relaxed()의 동일한 폴백 설계."""
+        crop = solid_bgr((180, 100, 100))
+        mask = np.zeros(crop.shape[:2], dtype=bool)
+        mask[0, 0] = True  # 1픽셀만 True -> 0.05 미달
+        assert np.array_equal(white_balance_gray_world_masked(crop, mask), white_balance_gray_world(crop))
+
+    def test_empty_crop_returns_crop_unchanged(self):
+        empty = np.zeros((0, 0, 3), dtype=np.uint8)
+        mask = np.zeros((0, 0), dtype=bool)
+        assert white_balance_gray_world_masked(empty, mask).size == 0
+
+    def test_occlusion_patch_outside_mask_does_not_influence_gain(self):
+        """FC-014 재현 - crop 절반이 옷 색상(Cast가 있는 색), 절반이 중립 회색 Occlusion
+        패치다. mask가 옷 영역만 True로 표시하면, 패치가 평균에 섞이지 않아야 하므로
+        masked 결과는 "crop 전체가 옷 색상뿐이었을 때"의 WB 결과(패치 없는 crop)와
+        동일해야 한다 - 반면 Masking 없이(white_balance_gray_world) 전체 평균을 쓰면
+        패치가 평균을 중립 쪽으로 당겨 다른 게인이 나온다."""
+        h, w = 40, 40
+        clothing_bgr = (180, 100, 100)  # B가 상대적으로 큰 cast 유사 색
+        occlusion_bgr = (120, 120, 120)  # 중립 회색 Occlusion 패치(EXP-036~039와 동일 값)
+        crop_with_patch = np.zeros((h, w, 3), dtype=np.uint8)
+        crop_with_patch[:, :] = clothing_bgr
+        crop_with_patch[: h // 2, :] = occlusion_bgr  # 위쪽 절반을 패치로 덮음
+
+        mask_clothing_only = np.zeros((h, w), dtype=bool)
+        mask_clothing_only[h // 2 :, :] = True  # 패치가 없는 아래쪽 절반만 True
+
+        masked_result = white_balance_gray_world_masked(crop_with_patch, mask_clothing_only)
+        unmasked_result = white_balance_gray_world(crop_with_patch)
+
+        clothing_only_crop = np.zeros((h, w, 3), dtype=np.uint8)
+        clothing_only_crop[:, :] = clothing_bgr
+        clothing_only_reference = white_balance_gray_world(clothing_only_crop)
+
+        # masked 결과의 옷 영역 픽셀은 "패치가 전혀 없었을 때"의 WB 결과와 동일해야 한다.
+        assert np.array_equal(masked_result[h // 2 :, :], clothing_only_reference[h // 2 :, :])
+        # 반면 Masking 없이 전체 평균을 쓰면 패치가 평균을 끌어당겨 다른 게인이 나온다.
+        assert not np.array_equal(unmasked_result[h // 2 :, :], clothing_only_reference[h // 2 :, :])
+
+
+class TestGammaBackgroundThenWhiteBalanceMasked:
+    """EXP-039: gamma_background_then_white_balance()와 동일한 순서(감마 먼저 -> WB
+    나중)이지만 WB 단계만 Mask 기반으로 교체한 조합."""
+
+    def test_equals_manual_composition(self):
+        crop = np.random.default_rng(1).integers(0, 255, size=(20, 20, 3), dtype=np.uint8)
+        background = solid_bgr((60, 90, 150))
+        mask = np.ones((20, 20), dtype=bool)
+        mask[:10, :] = False
+        expected = white_balance_gray_world_masked(adaptive_gamma_correct_from_background(crop, background), mask)
+        actual = gamma_background_then_white_balance_masked(crop, background, mask)
+        assert np.array_equal(actual, expected)
+
+    def test_mask_excluding_occlusion_differs_from_unmasked_version(self):
+        """같은 Gamma-Background 입력이라도 WB 단계에서 Occlusion 패치를 mask로 제외하면
+        gamma_background_then_white_balance(Masking 없음)과 다른 결과가 나와야 한다 -
+        이것이 FC-014를 완화하려는 핵심 메커니즘이다."""
+        h, w = 40, 40
+        clothing_bgr = (180, 100, 100)
+        occlusion_bgr = (120, 120, 120)
+        crop = np.zeros((h, w, 3), dtype=np.uint8)
+        crop[:, :] = clothing_bgr
+        crop[: h // 2, :] = occlusion_bgr
+        background = solid_bgr((128, 128, 128))  # 노출 변화 없음(Gamma 항등) -> WB 차이만 측정
+        mask = np.zeros((h, w), dtype=bool)
+        mask[h // 2 :, :] = True
+
+        masked = gamma_background_then_white_balance_masked(crop, background, mask)
+        unmasked = gamma_background_then_white_balance(crop, background)
+        assert not np.array_equal(masked[h // 2 :, :], unmasked[h // 2 :, :])
 
 
 class TestFrameMeanBrightness:
