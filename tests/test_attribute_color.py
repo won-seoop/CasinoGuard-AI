@@ -34,6 +34,7 @@ from src.attributes.color import (
     split_upper_lower,
     split_upper_lower_by_mask,
     white_balance_gray_world,
+    white_balance_gray_world_diagnostic,
     white_balance_gray_world_masked,
     whole_bbox_mean_color,
 )
@@ -327,6 +328,38 @@ class TestWhiteBalanceGrayWorld:
         img = solid_bgr((1, 1, 90), h=50, w=50)  # R만 매우 큼, B/G는 거의 0
         corrected = white_balance_gray_world(img, gain_min=0.3, gain_max=3.0)
         assert corrected.max() <= 90 * 3.0 + 1  # clip 범위를 벗어난 폭주가 없어야 함
+
+
+class TestWhiteBalanceGrayWorldDiagnostic:
+    """EXP-040: white_balance_gray_world_diagnostic이 white_balance_gray_world와
+    동일한 보정 결과를 만들어내는 thin wrapper임을 고정한다(region_dominant_color_
+    diagnostic과 동일한 패턴, EXP-032)."""
+
+    def test_reconstructs_same_corrected_image_as_non_diagnostic_function(self):
+        img = solid_bgr((180, 90, 80), h=50, w=50)
+        diag = white_balance_gray_world_diagnostic(img)
+        gains = np.array(diag["gains_after_clip"], dtype=np.float32)
+        reconstructed = np.clip(img.astype(np.float32) * gains.reshape(1, 1, 3), 0, 255).astype(np.uint8)
+        assert np.array_equal(reconstructed, white_balance_gray_world(img))
+
+    def test_empty_region_returns_identity_gains(self):
+        diag = white_balance_gray_world_diagnostic(np.zeros((0, 0, 3), dtype=np.uint8))
+        assert diag["gains_after_clip"] == [1.0, 1.0, 1.0]
+        assert diag["n_channels_clipped"] == 0
+
+    def test_reports_clipped_channel_count_for_near_monochrome_crop(self):
+        """채널 하나가 거의 0에 가까우면(near_monochrome) 그 채널의 clip 전 게인이
+        gain_max를 초과해 clip이 발동해야 한다(EXP-040이 로깅하는 신호 자체의 정확성)."""
+        img = solid_bgr((1, 1, 90), h=50, w=50)  # R만 매우 큼, B/G는 거의 0
+        diag = white_balance_gray_world_diagnostic(img, gain_min=0.3, gain_max=3.0)
+        assert diag["n_channels_clipped"] >= 1
+        assert max(diag["gains_before_clip"]) > 3.0
+
+    def test_neutral_gray_crop_has_no_clipped_channels_and_near_unit_gain(self):
+        img = solid_bgr((128, 128, 128), h=50, w=50)
+        diag = white_balance_gray_world_diagnostic(img)
+        assert diag["n_channels_clipped"] == 0
+        assert all(abs(g - 1.0) < 1e-3 for g in diag["gains_after_clip"])
 
 
 class TestRegionColorSignal:

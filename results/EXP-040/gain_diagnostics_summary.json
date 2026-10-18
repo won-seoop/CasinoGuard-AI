@@ -1,0 +1,32 @@
+{
+  "cool_cast": {
+    "n": 45,
+    "mean_post_gamma_overall_mean": 113.51019405788846,
+    "mean_max_abs_gain_deviation": 0.20760032733281453,
+    "pct_crops_with_any_clipped_channel": 0.0
+  },
+  "gallery": {
+    "n": 45,
+    "mean_post_gamma_overall_mean": 113.23541920979818,
+    "mean_max_abs_gain_deviation": 0.1345210552215576,
+    "pct_crops_with_any_clipped_channel": 0.0
+  },
+  "low_light": {
+    "n": 45,
+    "mean_post_gamma_overall_mean": 98.07133221096463,
+    "mean_max_abs_gain_deviation": 0.08829932080374824,
+    "pct_crops_with_any_clipped_channel": 0.0
+  },
+  "strong_light": {
+    "n": 45,
+    "mean_post_gamma_overall_mean": 143.7209443834093,
+    "mean_max_abs_gain_deviation": 0.17392304340998332,
+    "pct_crops_with_any_clipped_channel": 0.0
+  },
+  "warm_cast": {
+    "n": 45,
+    "mean_post_gamma_overall_mean": 113.01529574924045,
+    "mean_max_abs_gain_deviation": 0.4499943150414361,
+    "pct_crops_with_any_clipped_channel": 0.0
+  }
+}

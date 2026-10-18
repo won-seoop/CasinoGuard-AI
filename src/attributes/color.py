@@ -70,6 +70,42 @@ def _to_hsv(crop_bgr: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2HSV)
 
 
+def white_balance_gray_world_diagnostic(
+    crop_bgr: np.ndarray, gain_min: float = 0.3, gain_max: float = 3.0
+) -> dict:
+    """white_balance_gray_world()와 완전히 동일한 Gray World 게인 계산을 수행하지만,
+    보정된 이미지 대신 중간값(채널 평균, clip 전/후 게인, clip 발동 채널 수)을 그대로
+    반환한다 (EXP-040, Roadmap EXP-038/039 Next Action "Gray World 게인 값을 직접
+    로깅해 규명" - region_dominant_color_diagnostic과 동일한 thin-diagnostic 패턴).
+
+    EXP-038에서 Gamma-Background+WB 적용 후 Baseline(Color Histogram)의 low_light/
+    strong_light Top-1이 추가로 악화된 원인은 "추정"으로만 기록되고 확정되지 않았다
+    (crop 전체가 거의 단색에 가까운 상태에서 Gray World 게인이 극단적으로 작동할
+    가능성). 이 함수로 그 게인 값을 실제로 측정해 가설을 확인/반증한다.
+    """
+    if crop_bgr.size == 0:
+        return {
+            "channel_means": [0.0, 0.0, 0.0],
+            "overall_mean": 0.0,
+            "gains_before_clip": [1.0, 1.0, 1.0],
+            "gains_after_clip": [1.0, 1.0, 1.0],
+            "n_channels_clipped": 0,
+        }
+    img = crop_bgr.astype(np.float32)
+    channel_means = img.reshape(-1, 3).mean(axis=0)
+    overall_mean = float(channel_means.mean())
+    gains_before_clip = overall_mean / np.clip(channel_means, 1.0, None)
+    gains_after_clip = np.clip(gains_before_clip, gain_min, gain_max)
+    n_channels_clipped = int(np.sum(~np.isclose(gains_before_clip, gains_after_clip)))
+    return {
+        "channel_means": channel_means.tolist(),
+        "overall_mean": overall_mean,
+        "gains_before_clip": gains_before_clip.tolist(),
+        "gains_after_clip": gains_after_clip.tolist(),
+        "n_channels_clipped": n_channels_clipped,
+    }
+
+
 def white_balance_gray_world(crop_bgr: np.ndarray, gain_min: float = 0.3, gain_max: float = 3.0) -> np.ndarray:
     """카지노 조명(강한 인공조명/난색·한색 조명)으로 생긴 채널 간 색 Cast를 완화한다
     (FC-012, EXP-026 대안 B).
@@ -86,11 +122,9 @@ def white_balance_gray_world(crop_bgr: np.ndarray, gain_min: float = 0.3, gain_m
     """
     if crop_bgr.size == 0:
         return crop_bgr
+    diag = white_balance_gray_world_diagnostic(crop_bgr, gain_min, gain_max)
+    gains = np.array(diag["gains_after_clip"], dtype=np.float32)
     img = crop_bgr.astype(np.float32)
-    channel_means = img.reshape(-1, 3).mean(axis=0)
-    overall_mean = channel_means.mean()
-    gains = overall_mean / np.clip(channel_means, 1.0, None)
-    gains = np.clip(gains, gain_min, gain_max)
     corrected = img * gains.reshape(1, 1, 3)
     return np.clip(corrected, 0, 255).astype(np.uint8)
 
